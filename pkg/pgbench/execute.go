@@ -32,14 +32,14 @@ type PGBenchConfig struct {
 
 // PGBenchExecuteResult holds the results of a pgbench execution
 type PGBenchExecuteResult struct {
-	TransactionsCompleted int
-	TPS                   float64 // Transactions per second
+	TransactionsCompleted int     `json:"transactions_completed"`
+	TPS                   float64 `json:"tps"`
 
 	// Latency metrics (in milliseconds)
-	AverageLatency float64
-	P90Latency     float64
-	P95Latency     float64
-	P99Latency     float64
+	AverageLatency float64 `json:"average_latency"`
+	P90Latency     float64 `json:"p90_latency"`
+	P95Latency     float64 `json:"p95_latency"`
+	P99Latency     float64 `json:"p99_latency"`
 }
 
 // ExecutePGBench runs the pgbench benchmark with the given configuration
