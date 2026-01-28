@@ -7,7 +7,7 @@ PROJECT_ID    ?= my-project
 ZONE          ?= asia-southeast1-a
 MACHINE_TYPE  ?= e2-standard-2
 
-.PHONY: create delete info
+.PHONY: create delete info install-cnpg-operator
 
 create:
 	@echo "👉 make create (TARGET=$(TARGET), CLUSTER_NAME=$(CLUSTER_NAME))"
@@ -41,3 +41,8 @@ info:
 	@echo "TARGET=$(TARGET)"
 	@echo "CLUSTER_NAME=$(CLUSTER_NAME)"
 	@echo "NODES=$(NODES)"
+
+install-cnpg-operator:
+	@echo "📦 Installing CNPG Operator..."
+	@kubectl apply --server-side -f \
+	  https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.28/releases/cnpg-1.28.0.yaml
