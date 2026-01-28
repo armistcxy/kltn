@@ -20,3 +20,5 @@ spec:
       max_connections: "200"
       shared_buffers: "256MB"
       wal_level: replica
+      pg_stat_statements.max: "10000"
+      pg_stat_statements.track: all
