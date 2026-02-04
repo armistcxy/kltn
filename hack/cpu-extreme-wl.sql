@@ -1,0 +1,1 @@
+SELECT md5(random()::text) FROM generate_series(1, 5000);
