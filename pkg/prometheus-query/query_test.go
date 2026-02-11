@@ -33,6 +33,34 @@ func TestQueryBackendsByPod(t *testing.T) {
 	}
 }
 
+func TestQueryMemoryUsageByPod(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+
+	promAddr := "http://localhost:9090"
+	querier, err := NewPrometheusQuerier(promAddr)
+	if err != nil {
+		t.Fatalf("failed to create Prometheus querier: %v", err)
+	}
+
+	namespace := "default"
+	instances := "pg-cluster-.*"
+	results, err := querier.GetMemoryUsageByPod(ctx, namespace, instances)
+	if err != nil {
+		t.Fatalf("failed to query memory usage by pod: %v", err)
+	}
+
+	if len(results) == 0 {
+		t.Fatalf("expected non-empty results, got empty")
+	}
+
+	for pod, memoryUsage := range results {
+		t.Logf("Pod: %s, Memory Usage: %f MB", pod, memoryUsage/1024/1024)
+	}
+}
+
 func TestQueryCPUUsageByPod(t *testing.T) {
 	t.Parallel()
 

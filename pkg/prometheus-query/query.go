@@ -132,6 +132,47 @@ func (q *PrometheusQuerier) GetBackendsByPod(
 	return out, nil
 }
 
+// GetMemoryUsageByPod queries Memory usage for each pod (return in bytes).
+//
+// PromQL used:
+// sum(container_memory_working_set_bytes{pod=~"$instances", namespace="$namespace", container!="", image!=""}) by (pod)
+func (q *PrometheusQuerier) GetMemoryUsageByPod(
+	ctx context.Context,
+	namespace string,
+	instances string,
+) (map[string]float64, error) {
+	query := fmt.Sprintf(
+		`sum(container_memory_working_set_bytes{pod=~"%s", namespace="%s", container!="", image!=""}) by (pod)`,
+		instances,
+		namespace,
+	)
+
+	result, warnings, err := q.Query(ctx, query, time.Now())
+	if err != nil {
+		return nil, fmt.Errorf("prometheus query failed: %w", err)
+	}
+
+	if len(warnings) > 0 {
+		slog.Warn("prometheus warnings when querying memory usage by pod", "warnings", concatenateWarnings(warnings))
+	}
+
+	vector, ok := result.(model.Vector)
+	if !ok {
+		return nil, fmt.Errorf("unexpected result type %T, expected model.Vector", result)
+	}
+
+	out := make(map[string]float64, len(vector))
+	for _, sample := range vector {
+		pod := string(sample.Metric["pod"])
+		if pod == "" {
+			pod = string(sample.Metric["instance"])
+		}
+		out[pod] = float64(sample.Value)
+	}
+
+	return out, nil
+}
+
 func concatenateWarnings(warnings v1.Warnings) string {
 	var b strings.Builder
 
