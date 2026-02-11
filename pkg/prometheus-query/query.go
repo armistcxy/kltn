@@ -3,7 +3,6 @@ package prometheusquery
 import (
 	"context"
 	"fmt"
-	"log"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -33,6 +32,54 @@ func NewPrometheusQuerier(addr string) (*PrometheusQuerier, error) {
 	}, nil
 }
 
+// GetCPUUsageByPod queries CPU usage for each pod.
+//
+// Metric used:
+// node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate
+//
+// This metric is usually "cores used" (CPU seconds per second).
+// Example output:
+// - 0.05  => ~5% of 1 core
+// - 1.20  => ~120% (1.2 cores)
+func (q *PrometheusQuerier) GetCPUUsageByPod(
+	ctx context.Context,
+	namespace string,
+	cluster string,
+) (map[string]float64, error) {
+	query := fmt.Sprintf(
+		`sum(node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{namespace=~"%s", pod=~"%s-.*"}) by (pod)`,
+		namespace,
+		cluster,
+	)
+
+	result, warnings, err := q.Query(ctx, query, time.Now())
+	if err != nil {
+		return nil, fmt.Errorf("prometheus query failed: %w", err)
+	}
+
+	if len(warnings) > 0 {
+		slog.Warn("prometheus warnings when querying CPU usage by pod", "warnings", concatenateWarnings(warnings))
+	}
+
+	vector, ok := result.(model.Vector)
+	if !ok {
+		return nil, fmt.Errorf("unexpected result type %T, expected model.Vector", result)
+	}
+
+	out := make(map[string]float64, len(vector))
+
+	for _, sample := range vector {
+		pod := string(sample.Metric["pod"])
+		if pod == "" {
+			pod = string(sample.Metric["instance"])
+		}
+
+		out[pod] = float64(sample.Value)
+	}
+
+	return out, nil
+}
+
 // GetBackendsByPod queries current backend connections for each Postgres instance (pod)
 // in a CNPG cluster.
 //
@@ -60,7 +107,6 @@ func (q *PrometheusQuerier) GetBackendsByPod(
 	if err != nil {
 		return nil, fmt.Errorf("prometheus query failed: %w", err)
 	}
-	log.Printf("Result: %+v", result)
 
 	// Warnings are non-fatal, log them for visibility
 	if len(warnings) > 0 {
