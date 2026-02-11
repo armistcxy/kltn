@@ -3,7 +3,7 @@ kind: Cluster
 metadata:
   name: pg-cluster
 spec:
-  instances: 3
+  instances: 4
 
   imageName: ghcr.io/cloudnative-pg/postgresql:16.1
 
@@ -22,3 +22,8 @@ spec:
       wal_level: replica
       pg_stat_statements.max: "10000"
       pg_stat_statements.track: all
+  
+  monitoring:
+    customQueriesConfigMap:
+      - name: pg-custom-metrics
+        key: queries
