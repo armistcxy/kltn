@@ -1,4 +1,4 @@
-TARGET        ?= local   # local | gke
+TARGET        ?= local# local | gke
 CLUSTER_NAME  ?= local-pg
 NODES         ?= 1
 
@@ -7,7 +7,7 @@ PROJECT_ID    ?= my-project
 ZONE          ?= asia-southeast1-a
 MACHINE_TYPE  ?= e2-standard-2
 
-.PHONY: create delete info install-cnpg-operator
+.PHONY: create delete info install-cnpg-operator install-keda install-all
 
 create:
 	@echo "👉 make create (TARGET=$(TARGET), CLUSTER_NAME=$(CLUSTER_NAME))"
@@ -46,3 +46,11 @@ install-cnpg-operator:
 	@echo "📦 Installing CNPG Operator..."
 	@kubectl apply --server-side -f \
 	  https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/release-1.28/releases/cnpg-1.28.0.yaml
+
+install-keda:
+	@echo "📦 Installing KEDA..."
+	@kubectl apply -f https://github.com/kedacore/keda/releases/download/v2.19.0/keda-2.19.0.yaml
+	@echo "⏳ Waiting for KEDA to be ready..."
+	@kubectl wait --for=condition=Ready pods -l app.kubernetes.io/name=keda-operator -n keda --timeout=120s
+
+install-all: install-cnpg-operator install-keda	
