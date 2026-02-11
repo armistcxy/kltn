@@ -7,7 +7,7 @@ PROJECT_ID    ?= my-project
 ZONE          ?= asia-southeast1-a
 MACHINE_TYPE  ?= e2-standard-2
 
-.PHONY: create delete info install-cnpg-operator install-keda install-all
+.PHONY: create delete info install-cnpg-operator install-keda install-prometheus install-all
 
 create:
 	@echo "👉 make create (TARGET=$(TARGET), CLUSTER_NAME=$(CLUSTER_NAME))"
@@ -49,8 +49,17 @@ install-cnpg-operator:
 
 install-keda:
 	@echo "📦 Installing KEDA..."
-	@kubectl apply -f https://github.com/kedacore/keda/releases/download/v2.19.0/keda-2.19.0.yaml
+	@kubectl create -f https://github.com/kedacore/keda/releases/download/v2.19.0/keda-2.19.0.yaml
 	@echo "⏳ Waiting for KEDA to be ready..."
 	@kubectl wait --for=condition=Ready pods -l app.kubernetes.io/name=keda-operator -n keda --timeout=120s
 
-install-all: install-cnpg-operator install-keda	
+install-prometheus:
+	@echo "📦 Installing Prometheus Stack..."
+	@helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+	@helm repo update
+	@helm install prometheus prometheus-community/kube-prometheus-stack \
+	  --namespace monitoring --create-namespace \
+	  --set prometheus.prometheusSpec.podMonitorSelectorNilUsesHelmValues=false \
+	  --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false
+
+install-all: install-cnpg-operator install-keda install-prometheus
