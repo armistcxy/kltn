@@ -173,6 +173,69 @@ func (q *PrometheusQuerier) GetMemoryUsageByPod(
 	return out, nil
 }
 
+// GetTPSByPod queries Transactions Per Second (TPS) for each pod.
+//
+// PromQL used:
+// sum by (pod) (
+//
+//	rate(cnpg_pg_stat_database_xact_commit{namespace=~"$namespace", pod=~"$instances"}[1m])
+//
+// )
+// +
+// sum by (pod) (
+//
+//	rate(cnpg_pg_stat_database_xact_rollback{namespace=~"$namespace", pod=~"$instances"}[1m])
+//
+// )
+func (q *PrometheusQuerier) GetTPSByPod(
+	ctx context.Context,
+	namespace string,
+	instances string,
+	interval time.Duration,
+) (map[string]float64, error) {
+	intervalStr := interval.String()
+	query := fmt.Sprintf(
+		`sum by (pod) (
+			rate(cnpg_pg_stat_database_xact_commit{namespace=~"%s", pod=~"%s"}[%s])
+		)
+		+
+		sum by (pod) (
+			rate(cnpg_pg_stat_database_xact_rollback{namespace=~"%s", pod=~"%s"}[%s])
+		)`,
+		namespace,
+		instances,
+		intervalStr,
+		namespace,
+		instances,
+		intervalStr,
+	)
+
+	result, warnings, err := q.Query(ctx, query, time.Now())
+	if err != nil {
+		return nil, fmt.Errorf("prometheus query failed: %w", err)
+	}
+
+	if len(warnings) > 0 {
+		slog.Warn("prometheus warnings when querying TPS by pod", "warnings", concatenateWarnings(warnings))
+	}
+
+	vector, ok := result.(model.Vector)
+	if !ok {
+		return nil, fmt.Errorf("unexpected result type %T, expected model.Vector", result)
+	}
+
+	out := make(map[string]float64, len(vector))
+	for _, sample := range vector {
+		pod := string(sample.Metric["pod"])
+		if pod == "" {
+			pod = string(sample.Metric["instance"])
+		}
+		out[pod] = float64(sample.Value)
+	}
+
+	return out, nil
+}
+
 func concatenateWarnings(warnings v1.Warnings) string {
 	var b strings.Builder
 
