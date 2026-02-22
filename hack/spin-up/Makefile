@@ -50,8 +50,6 @@ install-cnpg-operator:
 install-keda:
 	@echo "📦 Installing KEDA..."
 	@kubectl create -f https://github.com/kedacore/keda/releases/download/v2.19.0/keda-2.19.0.yaml
-	@echo "⏳ Waiting for KEDA to be ready..."
-	@kubectl wait --for=condition=Ready pods -l app.kubernetes.io/name=keda-operator -n keda --timeout=120s
 
 install-prometheus:
 	@echo "📦 Installing Prometheus Stack..."
