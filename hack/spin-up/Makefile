@@ -56,6 +56,8 @@ install-prometheus:
 	@helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 	@helm repo update
 	@helm install prometheus prometheus-community/kube-prometheus-stack \
-	  --namespace monitoring --create-namespace
+	  --namespace monitoring --create-namespace \
+	  --set grafana.adminUser=admin \
+	  --set grafana.adminPassword=admin
 
 install-all: install-cnpg-operator install-keda install-prometheus
