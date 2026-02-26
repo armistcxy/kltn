@@ -1,5 +1,3 @@
----
-
 ### Kiến trúc hệ thống + Setup
 
 Thành phần:
@@ -176,8 +174,6 @@ Configuration có thể được tìm thông qua Mục `Configuration` trong CNP
     ```
     
     Qua thử nghiệm thì mình thấy rất ảo vì không thể tính được CPU hiện tại của cluster
-    
-    ![image.png](attachment:237be8ec-0038-4c75-9d02-edf1120b69e3:image.png)
     
     ***Mình sẽ skip cách này***
     
