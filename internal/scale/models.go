@@ -12,7 +12,7 @@ type MetricsSnapshot struct {
 	// Per pod metrics
 	BackendsByPod map[string]float64
 	CPUByPod      map[string]float64
-	MemoryByPod   map[string]float64
+	MemoryByPod   map[string]float64 // in GB
 	TPSByPod      map[string]float64
 
 	// Aggregate metrics
