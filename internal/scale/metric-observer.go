@@ -114,6 +114,8 @@ func (o *PrometheusMetricsObserver) Observe(ctx context.Context) (*MetricsSnapsh
 	snapshot.TotalBackends = aggregateSum(snapshot.BackendsByPod)
 	snapshot.AvgCPU, snapshot.MaxCPU = aggregateAvgAndMax(snapshot.CPUByPod)
 	snapshot.AvgMemory, snapshot.MaxMemory = aggregateAvgAndMax(snapshot.MemoryByPod)
+	snapshot.AvgMemory /= 1024 * 1024 * 1024 // convert to GB
+	snapshot.MaxMemory /= 1024 * 1024 * 1024 // convert to GB
 	snapshot.TotalTPS = aggregateSum(snapshot.TPSByPod)
 
 	return snapshot, nil
