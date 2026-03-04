@@ -7,7 +7,7 @@ PROJECT_ID    ?= my-project
 ZONE          ?= asia-southeast1-a
 MACHINE_TYPE  ?= e2-standard-2
 
-.PHONY: create delete info install-cnpg-operator install-keda install-prometheus install-all
+.PHONY: create delete info install-cnpg-operator install-keda install-metallb install-prometheus install-all
 
 create:
 	@echo "👉 make create (TARGET=$(TARGET), CLUSTER_NAME=$(CLUSTER_NAME))"
@@ -51,6 +51,10 @@ install-keda:
 	@echo "📦 Installing KEDA..."
 	@kubectl create -f https://github.com/kedacore/keda/releases/download/v2.19.0/keda-2.19.0.yaml
 
+install-metallb:
+	@echo "📦 Installing MetalLB (native)..."
+	@kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.13.7/config/manifests/metallb-native.yaml
+
 install-prometheus:
 	@echo "📦 Installing Prometheus Stack..."
 	@helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
@@ -60,4 +64,4 @@ install-prometheus:
 	  --set grafana.adminUser=admin \
 	  --set grafana.adminPassword=admin
 
-install-all: install-cnpg-operator install-keda install-prometheus
+install-all: install-cnpg-operator install-keda install-prometheus install-metallb
