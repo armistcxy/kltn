@@ -236,6 +236,34 @@ func (q *PrometheusQuerier) GetTPSByPod(
 	return out, nil
 }
 
+// QueryScalar executes a PromQL instant query and returns a single float64.
+// If the result is a vector with multiple samples, their values are summed.
+// If the result is a scalar, it is returned directly.
+// The query should use aggregation functions (sum, max, avg) to return one value per intent.
+func (q *PrometheusQuerier) QueryScalar(ctx context.Context, query string) (float64, error) {
+	result, warnings, err := q.Query(ctx, query, time.Now())
+	if err != nil {
+		return 0, fmt.Errorf("prometheus query failed: %w", err)
+	}
+
+	if len(warnings) > 0 {
+		slog.Warn("prometheus warnings", "warnings", concatenateWarnings(warnings))
+	}
+
+	switch v := result.(type) {
+	case model.Vector:
+		sum := 0.0
+		for _, sample := range v {
+			sum += float64(sample.Value)
+		}
+		return sum, nil
+	case *model.Scalar:
+		return float64(v.Value), nil
+	default:
+		return 0, fmt.Errorf("unsupported result type %T for scalar query", result)
+	}
+}
+
 func concatenateWarnings(warnings v1.Warnings) string {
 	var b strings.Builder
 
