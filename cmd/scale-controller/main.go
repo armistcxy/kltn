@@ -5,6 +5,7 @@ import (
 	"flag"
 	"log"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -13,6 +14,8 @@ import (
 	"github.com/armistcxy/kltn/internal/scale"
 	prometheusquery "github.com/armistcxy/kltn/pkg/prometheus-query"
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
@@ -24,6 +27,7 @@ func main() {
 	namespace := flag.String("namespace", "default", "Kubernetes namespace of the CNPG cluster")
 	dbCluster := flag.String("db-cluster", "pg-cluster", "Name of the CNPG cluster to manage")
 	watchInterval := flag.Duration("watch-interval", 10*time.Second, "How often to check the config file for changes")
+	metricsAddr := flag.String("metrics-addr", ":9091", "Address to expose controller Prometheus metrics on")
 	flag.Parse()
 
 	// Structured logging.
@@ -61,6 +65,18 @@ func main() {
 
 	// Build controller.
 	controller := scale.NewScaleController(cfg, observer, cnpgClient)
+
+	// Prometheus metrics server for the controller itself.
+	cm := scale.NewControllerMetrics(prometheus.DefaultRegisterer)
+	controller.WithMetrics(cm)
+	go func() {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.Handler())
+		slog.Info("metrics server listening", "addr", *metricsAddr)
+		if err := http.ListenAndServe(*metricsAddr, mux); err != nil {
+			log.Printf("metrics server error: %v", err)
+		}
+	}()
 
 	// Optional: attach a predictor here.
 	// Uncomment and replace with a real algorithm once implemented:
