@@ -153,6 +153,12 @@ func (c *ScaleController) reconcileOnce(ctx context.Context) error {
 		"reason", decision.Reason,
 	)
 
+	// Export decision metrics.
+	if c.metrics != nil {
+		current, _ := c.cnpgClient.GetCurrentInstances(ctx)
+		c.metrics.recordDecision(current, decision.ReactiveTarget, decision.PredictiveTarget, decision.TargetInstances)
+	}
+
 	// Act
 	if err := c.Act(ctx, decision); err != nil {
 		return fmt.Errorf("act: %w", err)
