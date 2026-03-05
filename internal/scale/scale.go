@@ -25,6 +25,7 @@ type ScaleController struct {
 	observer   MetricsObserver
 	cnpgClient *CNPGClient
 	predictor  Predictor // nil → reactive only
+	metrics    *ControllerMetrics // nil → no metrics exported
 
 	// Rolling per-metric history, used by the predictor.
 	historyMu sync.Mutex
@@ -41,6 +42,16 @@ func NewScaleController(cfg Config, observer MetricsObserver, cnpgClient *CNPGCl
 		cnpgClient: cnpgClient,
 		history:    make(map[string][]DataPoint),
 	}
+}
+
+// WithMetrics attaches a ControllerMetrics instance that the controller will use
+// to export Prometheus metrics on every reconcile cycle.
+// Can be called before Run() or concurrently; it is goroutine-safe.
+func (c *ScaleController) WithMetrics(m *ControllerMetrics) *ScaleController {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.metrics = m
+	return c
 }
 
 // WithPredictor attaches a predictive scaling algorithm.
@@ -112,8 +123,22 @@ func (c *ScaleController) reconcileOnce(ctx context.Context) error {
 	}
 	slog.Info("metrics observed", "at", snapshot.At, "values", snapshot.Values)
 
+	// Export raw (instantaneous) metric values.
+	if c.metrics != nil {
+		for name, value := range snapshot.Values {
+			c.metrics.recordRaw(name, value)
+		}
+	}
+
 	// Record into rolling history for the predictor.
 	c.appendHistory(snapshot)
+
+	// Export moving-average values (computed over the full history buffer).
+	if c.metrics != nil {
+		for name := range snapshot.Values {
+			c.metrics.recordAvg(name, c.computeHistoryAvg(name))
+		}
+	}
 
 	// Decide
 	decision, err := c.Decide(ctx, cfg, snapshot)
@@ -127,6 +152,12 @@ func (c *ScaleController) reconcileOnce(ctx context.Context) error {
 		"predictive", decision.PredictiveTarget,
 		"reason", decision.Reason,
 	)
+
+	// Export decision metrics.
+	if c.metrics != nil {
+		current, _ := c.cnpgClient.GetCurrentInstances(ctx)
+		c.metrics.recordDecision(current, decision.ReactiveTarget, decision.PredictiveTarget, decision.TargetInstances)
+	}
 
 	// Act
 	if err := c.Act(ctx, decision); err != nil {
@@ -339,6 +370,23 @@ func (c *ScaleController) appendHistory(snapshot *MetricsSnapshot) {
 			c.history[name] = c.history[name][len(c.history[name])-maxHistorySize:]
 		}
 	}
+}
+
+// computeHistoryAvg returns the arithmetic mean of all values in the rolling
+// history for metricName. Returns 0 if no history exists yet.
+func (c *ScaleController) computeHistoryAvg(metricName string) float64 {
+	c.historyMu.Lock()
+	defer c.historyMu.Unlock()
+
+	h := c.history[metricName]
+	if len(h) == 0 {
+		return 0
+	}
+	sum := 0.0
+	for _, dp := range h {
+		sum += dp.Value
+	}
+	return sum / float64(len(h))
 }
 
 // getHistory returns a copy of the history for the named metric (oldest-first).
