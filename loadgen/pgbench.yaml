@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pgbench-runner
+spec:
+  containers:
+  - name: runner
+    image: zzzsleepzzz/pgbench-only
+  restartPolicy: Never
