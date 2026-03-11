@@ -1,0 +1,85 @@
+// Package pattern defines load patterns (ramp, spike, steady-state).
+// Full implementation in WP3.
+package pattern
+
+import (
+	"fmt"
+	"os"
+	"time"
+
+	"gopkg.in/yaml.v3"
+)
+
+// Pattern drives the rate limiter over time.
+type Pattern interface {
+	// RPS returns the target requests-per-second at elapsed time t.
+	RPS(t time.Duration) float64
+	// Done reports whether the pattern has finished.
+	Done(t time.Duration) bool
+	// TotalDuration is the sum of all step durations (0 if unbounded).
+	TotalDuration() time.Duration
+}
+
+// Step is one phase in a multi-step scenario.
+type Step struct {
+	Duration time.Duration `yaml:"duration"`
+	RPS      float64       `yaml:"rps"`
+}
+
+// ScenarioFile is the top-level YAML structure for scenario files.
+type ScenarioFile struct {
+	Name  string `yaml:"name"`
+	Steps []struct {
+		Duration string  `yaml:"duration"`
+		RPS      float64 `yaml:"rps"`
+	} `yaml:"steps"`
+}
+
+// StepPattern runs a sequence of (duration, rps) steps, then holds the last RPS.
+type StepPattern struct {
+	steps    []Step
+	totalDur time.Duration
+}
+
+// LoadFile parses a YAML scenario file into a Pattern.
+func LoadFile(path string) (*StepPattern, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read scenario: %w", err)
+	}
+
+	var sf ScenarioFile
+	if err := yaml.Unmarshal(raw, &sf); err != nil {
+		return nil, fmt.Errorf("parse scenario: %w", err)
+	}
+	if len(sf.Steps) == 0 {
+		return nil, fmt.Errorf("scenario %q has no steps", sf.Name)
+	}
+
+	steps := make([]Step, len(sf.Steps))
+	var total time.Duration
+	for i, s := range sf.Steps {
+		d, err := time.ParseDuration(s.Duration)
+		if err != nil {
+			return nil, fmt.Errorf("step %d duration: %w", i, err)
+		}
+		steps[i] = Step{Duration: d, RPS: s.RPS}
+		total += d
+	}
+	return &StepPattern{steps: steps, totalDur: total}, nil
+}
+
+func (p *StepPattern) RPS(t time.Duration) float64 {
+	var cumul time.Duration
+	for _, s := range p.steps {
+		cumul += s.Duration
+		if t < cumul {
+			return s.RPS
+		}
+	}
+	// After all steps: hold last RPS
+	return p.steps[len(p.steps)-1].RPS
+}
+
+func (p *StepPattern) Done(t time.Duration) bool       { return t >= p.totalDur }
+func (p *StepPattern) TotalDuration() time.Duration    { return p.totalDur }
