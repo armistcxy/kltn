@@ -54,10 +54,21 @@ func init() {
 	rootCmd.AddCommand(runCmd)
 }
 
+// scaleSetter is implemented by workloads that accept an explicit scale factor.
+type scaleSetter interface{ SetScaleFactor(int) }
+
 func runRun(_ *cobra.Command, _ []string) error {
 	wl, err := workload.Get(runFlags.WorkloadName)
 	if err != nil {
 		return err
+	}
+
+	// Wire --scale-factor to the workload. If > 1 it also suppresses auto-detection
+	// in Prepare(), so the user's explicit value is respected.
+	if runFlags.ScaleFactor > 1 {
+		if ss, ok := wl.(scaleSetter); ok {
+			ss.SetScaleFactor(runFlags.ScaleFactor)
+		}
 	}
 
 	// Handle graceful shutdown on SIGINT/SIGTERM.

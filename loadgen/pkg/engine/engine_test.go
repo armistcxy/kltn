@@ -17,7 +17,7 @@ type mockWorkload struct {
 }
 
 func (m *mockWorkload) Name() string { return m.name }
-func (m *mockWorkload) Execute(ctx context.Context, _ *pgxpool.Pool) error {
+func (m *mockWorkload) Execute(ctx context.Context, _ *pgxpool.Conn) error {
 	if m.delay > 0 {
 		select {
 		case <-time.After(m.delay):

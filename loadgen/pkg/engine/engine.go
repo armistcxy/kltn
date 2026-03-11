@@ -4,18 +4,26 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/time/rate"
-
-	"time"
 )
 
 // Workload is executed repeatedly by each worker goroutine.
+// Each worker holds a single persistent *pgxpool.Conn for its lifetime —
+// matching pgbench's one-connection-per-client model and eliminating
+// per-transaction Acquire/Release overhead.
 type Workload interface {
 	Name() string
-	// Execute runs one unit of work using the provided pool.
-	Execute(ctx context.Context, pool *pgxpool.Pool) error
+	// Execute runs one unit of work on the provided persistent connection.
+	Execute(ctx context.Context, conn *pgxpool.Conn) error
+}
+
+// Preparer is an optional interface a Workload can implement to perform
+// one-time setup (e.g. querying DB metadata) before workers are spawned.
+type Preparer interface {
+	Prepare(ctx context.Context, pool *pgxpool.Pool) error
 }
 
 // Config holds all engine parameters.
@@ -37,7 +45,7 @@ type Engine struct {
 	config  Config
 	limiter *rate.Limiter
 	stats   *Stats
-	// pool may be set externally (e.g. for testing); otherwise created in Run.
+	// pool may be injected externally (e.g. for testing); otherwise created in Run.
 	pool *pgxpool.Pool
 }
 
@@ -114,11 +122,18 @@ func (e *Engine) run(ctx context.Context, pool *pgxpool.Pool) (*Summary, error) 
 	runCtx, cancel := context.WithTimeout(ctx, e.config.Duration)
 	defer cancel()
 
-	e.stats = NewStats() // reset stats for reuse
+	// One-time workload setup (e.g. scale factor detection from DB).
+	if p, ok := e.config.Workload.(Preparer); ok && pool != nil {
+		if err := p.Prepare(runCtx, pool); err != nil {
+			return nil, fmt.Errorf("workload prepare: %w", err)
+		}
+	}
+
+	e.stats = NewStats()
 	e.stats.Start()
 
 	var wg sync.WaitGroup
-	for i := 0; i < e.config.Concurrency; i++ {
+	for range e.config.Concurrency {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -149,7 +164,21 @@ func (e *Engine) run(ctx context.Context, pool *pgxpool.Pool) (*Summary, error) 
 	return e.stats.FinalSummary(), nil
 }
 
+// workerLoop acquires one connection and holds it for the worker's entire
+// lifetime, executing transactions back-to-back without Acquire/Release
+// overhead — identical to pgbench's client model.
 func (e *Engine) workerLoop(ctx context.Context, pool *pgxpool.Pool) {
+	var conn *pgxpool.Conn
+
+	if pool != nil {
+		var err error
+		conn, err = pool.Acquire(ctx)
+		if err != nil {
+			return // context already cancelled during startup
+		}
+		defer conn.Release()
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -158,11 +187,11 @@ func (e *Engine) workerLoop(ctx context.Context, pool *pgxpool.Pool) {
 		}
 
 		if err := e.limiter.Wait(ctx); err != nil {
-			return // context cancelled while waiting for token
+			return
 		}
 
 		start := time.Now()
-		execErr := e.config.Workload.Execute(ctx, pool)
+		execErr := e.config.Workload.Execute(ctx, conn)
 		e.stats.Record(time.Since(start), execErr)
 	}
 }

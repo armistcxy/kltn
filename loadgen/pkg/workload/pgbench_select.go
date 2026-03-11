@@ -20,19 +20,39 @@ type PgbenchSelect struct {
 
 func (w *PgbenchSelect) Name() string { return "pgbench-select" }
 
-func (w *PgbenchSelect) Execute(ctx context.Context, pool *pgxpool.Pool) error {
+// SetScaleFactor overrides the scale factor (called from CLI flag).
+func (w *PgbenchSelect) SetScaleFactor(sf int) { w.ScaleFactor = sf }
+
+// Prepare auto-detects scale factor from the DB when not explicitly set.
+func (w *PgbenchSelect) Prepare(ctx context.Context, pool *pgxpool.Pool) error {
+	if w.ScaleFactor > 1 {
+		return nil
+	}
+
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Release()
+
+	var sf int
+	if err = conn.QueryRow(ctx, "SELECT count(*) FROM pgbench_branches").Scan(&sf); err != nil {
+		return fmt.Errorf("detect scale factor: %w", err)
+	}
+	if sf >= 1 {
+		w.ScaleFactor = sf
+		fmt.Printf("[prepare] pgbench-select: detected scale factor = %d\n", sf)
+	}
+	return nil
+}
+
+func (w *PgbenchSelect) Execute(ctx context.Context, conn *pgxpool.Conn) error {
 	sf := w.ScaleFactor
 	if sf < 1 {
 		sf = 1
 	}
 
 	aid := rand.Intn(100_000*sf) + 1
-
-	conn, err := pool.Acquire(ctx)
-	if err != nil {
-		return fmt.Errorf("acquire: %w", err)
-	}
-	defer conn.Release()
 
 	var abalance int
 	return conn.QueryRow(ctx,
