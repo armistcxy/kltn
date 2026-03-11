@@ -9,10 +9,12 @@ import (
 )
 
 // Workload is executed repeatedly by each worker goroutine.
-// Implementations must be safe for concurrent use.
+// Each worker holds a single persistent *pgxpool.Conn for its lifetime;
+// implementations receive that connection directly and must not close it.
+// Implementations must be safe for concurrent use across multiple goroutines.
 type Workload interface {
 	Name() string
-	Execute(ctx context.Context, pool *pgxpool.Pool) error
+	Execute(ctx context.Context, conn *pgxpool.Conn) error
 }
 
 var registry = map[string]Workload{}
