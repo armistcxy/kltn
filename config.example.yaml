@@ -1,0 +1,42 @@
+minInstances: 1
+maxInstances: 6
+
+pollInterval: 30s
+cooldown: 60s
+
+# "max" (default) or "weighted_average"
+aggregation: max
+
+metrics:
+  - name: backends
+    # Total active connections across all pods
+    query: 'sum(cnpg_backends_total{namespace="default", pod=~"pg-cluster-.*"})'
+    scaleUpThreshold: 80
+    scaleDownThreshold: 20
+    # ceil(value / 50) → 1 replica per 50 connections
+    targetValuePerReplica: 50
+    weight: 1.0
+
+  - name: tps
+    # Transactions per second (commits + rollbacks)
+    query: |
+      sum(rate(cnpg_pg_stat_database_xact_commit{namespace="default", pod=~"pg-cluster-.*"}[1m]))
+      + sum(rate(cnpg_pg_stat_database_xact_rollback{namespace="default", pod=~"pg-cluster-.*"}[1m]))
+    scaleUpThreshold: 1000
+    scaleDownThreshold: 100
+    targetValuePerReplica: 500
+    weight: 0.8
+
+  - name: cpu_cores
+    # CPU usage in cores across all pods
+    query: 'sum(node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{namespace="default", pod=~"pg-cluster-.*"})'
+    scaleUpThreshold: 2.0
+    scaleDownThreshold: 0.4
+    weight: 0.5
+
+# Optional: enable predictive scaling once a Predictor is attached via WithPredictor().
+prediction:
+  enabled: false
+  metricName: backends        # must match a name in the metrics list above
+  horizon: 5m                 # forecast 5 minutes ahead
+  minHistoryDuration: 1h      # require at least 1h of history before predicting
