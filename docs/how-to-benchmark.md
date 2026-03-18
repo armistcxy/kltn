@@ -20,43 +20,41 @@ name: gradual_ramp
 steps:
   # Phase 1: Baseline thấp (warm-up + establish history cho predictor)
   - duration: 120s
-    rps: 100
+    rps: 50
   
   # Phase 2: Tăng dần, mỗi step tăng ~200 RPS
   - duration: 60s
-    rps: 300
+    rps: 150 # 1 replica
   - duration: 60s
-    rps: 500
+    rps: 250 # 1 replica
   - duration: 60s
-    rps: 700
+    rps: 350 # 1 replica
   - duration: 60s
-    rps: 900
+    rps: 500 # 2 replica
   - duration: 60s
-    rps: 1100
+    rps: 700 # 2 replica
   - duration: 60s
-    rps: 1400
+    rps: 900 # 3 replica
   - duration: 60s
-    rps: 1800
+    rps: 1100 # 3 replica
   - duration: 60s
-    rps: 2200
-  - duration: 60s
-    rps: 2500
+    rps: 1400 # 4-5 replica
   
   # Phase 3: Sustain peak
   - duration: 180s
-    rps: 2500
+    rps: 1400 # 5 replica
   
   # Phase 4: Giảm dần
   - duration: 60s
-    rps: 2000
-  - duration: 60s
-    rps: 1500
-  - duration: 60s
     rps: 1000
   - duration: 60s
-    rps: 500
+    rps: 700
+  - duration: 60s
+    rps: 400
+  - duration: 60s
+    rps: 200
   - duration: 120s
-    rps: 100
+    rps: 50
 ```
 
 Scenario 2: Sudden Spike
