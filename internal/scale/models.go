@@ -75,10 +75,56 @@ const (
 	AggregationWeightedAverage AggregationType = "weighted_average"
 )
 
+// PredictorType identifies the forecasting algorithm.
+type PredictorType string
+
+const (
+	PredictorSMA         PredictorType = "sma"
+	PredictorEWMA        PredictorType = "ewma"
+	PredictorLinReg      PredictorType = "linreg"
+	PredictorHoltWinters PredictorType = "holtwinters"
+)
+
+// SMAConfig configures the simple moving average predictor.
+type SMAConfig struct {
+	// Window is the number of most-recent points to average. Default: 10.
+	Window int `yaml:"window"`
+}
+
+// EWMAConfig configures the exponential weighted moving average predictor.
+type EWMAConfig struct {
+	// Alpha is the smoothing factor (0 < alpha ≤ 1).
+	// Higher values give more weight to recent observations.
+	Alpha float64 `yaml:"alpha"`
+
+	// TrendWindow is the number of recent EWMA values used to estimate the
+	// current trend slope for horizon extrapolation. 0 or 1 → flat forecast.
+	TrendWindow int `yaml:"trendWindow"`
+}
+
+// LinRegConfig configures the ordinary-least-squares linear regression predictor.
+type LinRegConfig struct {
+	// Window is the number of most-recent points to include in the regression fit.
+	// Default: 30.
+	Window int `yaml:"window"`
+}
+
+// HoltWintersConfig configures Holt's linear (double exponential smoothing) predictor.
+type HoltWintersConfig struct {
+	// Alpha is the level smoothing factor (0 < alpha ≤ 1).
+	Alpha float64 `yaml:"alpha"`
+
+	// Beta is the trend smoothing factor (0 < beta ≤ 1).
+	Beta float64 `yaml:"beta"`
+}
+
 // PredictionConfig enables predictive scaling layered on top of reactive scaling.
 type PredictionConfig struct {
 	// Enabled toggles predictive scaling.
 	Enabled bool
+
+	// Type selects the forecasting algorithm. Defaults to "sma".
+	Type PredictorType
 
 	// MetricName is the name of the metric (from Metrics list) to feed into the predictor.
 	MetricName string
@@ -90,6 +136,12 @@ type PredictionConfig struct {
 	// MinHistoryDuration is the minimum age of the oldest data point required
 	// before prediction is used. Prevents decisions on too little history.
 	MinHistoryDuration time.Duration
+
+	// Algorithm-specific configs — only the one matching Type is used.
+	SMA         *SMAConfig
+	EWMA        *EWMAConfig
+	LinReg      *LinRegConfig
+	HoltWinters *HoltWintersConfig
 }
 
 // ScaleActionType describes the scaling action taken.

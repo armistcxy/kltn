@@ -25,10 +25,33 @@ type configFile struct {
 }
 
 type predictionFile struct {
-	Enabled            bool   `yaml:"enabled"`
-	MetricName         string `yaml:"metricName"`
-	Horizon            string `yaml:"horizon"`
-	MinHistoryDuration string `yaml:"minHistoryDuration"`
+	Enabled            bool                 `yaml:"enabled"`
+	Type               string               `yaml:"type"`
+	MetricName         string               `yaml:"metricName"`
+	Horizon            string               `yaml:"horizon"`
+	MinHistoryDuration string               `yaml:"minHistoryDuration"`
+	SMA                *smaConfigFile       `yaml:"sma,omitempty"`
+	EWMA               *ewmaConfigFile      `yaml:"ewma,omitempty"`
+	LinReg             *linRegConfigFile    `yaml:"linreg,omitempty"`
+	HoltWinters        *holtWintersFile     `yaml:"holtwinters,omitempty"`
+}
+
+type smaConfigFile struct {
+	Window int `yaml:"window"`
+}
+
+type ewmaConfigFile struct {
+	Alpha       float64 `yaml:"alpha"`
+	TrendWindow int     `yaml:"trendWindow"`
+}
+
+type linRegConfigFile struct {
+	Window int `yaml:"window"`
+}
+
+type holtWintersFile struct {
+	Alpha float64 `yaml:"alpha"`
+	Beta  float64 `yaml:"beta"`
 }
 
 // LoadConfig reads and parses a YAML config file into Config.
@@ -81,6 +104,7 @@ func convertConfig(raw configFile) (Config, error) {
 	if raw.Prediction != nil {
 		p := &PredictionConfig{
 			Enabled:    raw.Prediction.Enabled,
+			Type:       PredictorType(raw.Prediction.Type),
 			MetricName: raw.Prediction.MetricName,
 		}
 		if raw.Prediction.Horizon != "" {
@@ -91,6 +115,24 @@ func convertConfig(raw configFile) (Config, error) {
 		if raw.Prediction.MinHistoryDuration != "" {
 			if p.MinHistoryDuration, err = time.ParseDuration(raw.Prediction.MinHistoryDuration); err != nil {
 				return Config{}, fmt.Errorf("prediction.minHistoryDuration %q: %w", raw.Prediction.MinHistoryDuration, err)
+			}
+		}
+		if raw.Prediction.SMA != nil {
+			p.SMA = &SMAConfig{Window: raw.Prediction.SMA.Window}
+		}
+		if raw.Prediction.EWMA != nil {
+			p.EWMA = &EWMAConfig{
+				Alpha:       raw.Prediction.EWMA.Alpha,
+				TrendWindow: raw.Prediction.EWMA.TrendWindow,
+			}
+		}
+		if raw.Prediction.LinReg != nil {
+			p.LinReg = &LinRegConfig{Window: raw.Prediction.LinReg.Window}
+		}
+		if raw.Prediction.HoltWinters != nil {
+			p.HoltWinters = &HoltWintersConfig{
+				Alpha: raw.Prediction.HoltWinters.Alpha,
+				Beta:  raw.Prediction.HoltWinters.Beta,
 			}
 		}
 		cfg.Prediction = p
@@ -159,6 +201,31 @@ func validateConfig(cfg Config) error {
 		}
 		if cfg.Prediction.Horizon <= 0 {
 			return fmt.Errorf("prediction.horizon must be > 0")
+		}
+		switch cfg.Prediction.Type {
+		case "", PredictorSMA, PredictorEWMA, PredictorLinReg, PredictorHoltWinters:
+			// valid
+		default:
+			return fmt.Errorf("prediction.type %q is not supported (valid: sma, ewma, linreg, holtwinters)", cfg.Prediction.Type)
+		}
+		if cfg.Prediction.Type == PredictorEWMA {
+			if cfg.Prediction.EWMA == nil {
+				return fmt.Errorf("prediction.ewma config block is required when type is %q", PredictorEWMA)
+			}
+			if cfg.Prediction.EWMA.Alpha <= 0 || cfg.Prediction.EWMA.Alpha > 1 {
+				return fmt.Errorf("prediction.ewma.alpha must be in (0, 1], got %v", cfg.Prediction.EWMA.Alpha)
+			}
+		}
+		if cfg.Prediction.Type == PredictorHoltWinters {
+			if cfg.Prediction.HoltWinters == nil {
+				return fmt.Errorf("prediction.holtwinters config block is required when type is %q", PredictorHoltWinters)
+			}
+			if cfg.Prediction.HoltWinters.Alpha <= 0 || cfg.Prediction.HoltWinters.Alpha > 1 {
+				return fmt.Errorf("prediction.holtwinters.alpha must be in (0, 1], got %v", cfg.Prediction.HoltWinters.Alpha)
+			}
+			if cfg.Prediction.HoltWinters.Beta <= 0 || cfg.Prediction.HoltWinters.Beta > 1 {
+				return fmt.Errorf("prediction.holtwinters.beta must be in (0, 1], got %v", cfg.Prediction.HoltWinters.Beta)
+			}
 		}
 	}
 	return nil
