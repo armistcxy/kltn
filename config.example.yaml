@@ -1,5 +1,5 @@
 minInstances: 1
-maxInstances: 4
+maxInstances: 6
 
 pollInterval: 30s
 cooldown: 60s
@@ -10,7 +10,7 @@ aggregation: max
 metrics:
   - name: backends
     # Total active connections across all pods
-    query: 'sum(cnpg_backends_total{namespace="default", pod=~"pg-cluster-.*"})'
+    query: 'sum(cnpg_backends_total{namespace="default", pod=~"pg-cluster-.*", state="active"})'
     scaleUpThreshold: 15
     scaleDownThreshold: 5
     targetValuePerReplica: 10  # ~10 concurrent connections per replica = healthy zone

@@ -14,11 +14,13 @@ import (
 	"github.com/armistcxy/kltn/internal/scale"
 	prometheusquery "github.com/armistcxy/kltn/pkg/prometheus-query"
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
+	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
+	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 func main() {
@@ -31,7 +33,12 @@ func main() {
 	flag.Parse()
 
 	// Structured logging.
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	// Use a shared slog handler so controller-runtime internals (CNPG scheme, etc.)
+	// write to the same output and format instead of emitting the "log.SetLogger
+	// was never called" warning.
+	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
+	slog.SetDefault(slog.New(handler))
+	ctrllog.SetLogger(logr.FromSlogHandler(handler))
 
 	// Load initial config.
 	cfg, err := scale.LoadConfig(*configPath)
@@ -78,19 +85,12 @@ func main() {
 		}
 	}()
 
-	// Optional: attach a predictor here.
-	// Uncomment and replace with a real algorithm once implemented:
-	//
-	//   controller.WithPredictor(scale.NewMovingAveragePredictor(10))
-	//
-	// Or use PredictorFunc for a custom inline algorithm:
-	//
-	//   controller.WithPredictor(scale.NewPredictorFunc("my_algo",
-	//       func(ctx context.Context, history []scale.DataPoint, horizon time.Duration) (float64, error) {
-	//           // your algorithm
-	//           return forecast, nil
-	//       },
-	//   ))
+	// Auto-wire predictor from config (type is selected via prediction.type in config.yaml).
+	if predictor, err := scale.BuildPredictor(cfg.Prediction); err != nil {
+		log.Fatalf("failed to build predictor: %v", err)
+	} else if predictor != nil {
+		controller.WithPredictor(predictor)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
