@@ -112,7 +112,11 @@ func (e *Engine) connect(ctx context.Context) (*pgxpool.Pool, error) {
 		return nil, err
 	}
 	cfg.MaxConns = int32(e.config.Concurrency + 2)
-	cfg.MinConns = int32(e.config.Concurrency)
+	cfg.MinConns = 0
+	// Force connections to expire so the pool reconnects to newly-scaled replicas.
+	// Without these, idle connections stay pinned to the same backend indefinitely.
+	cfg.MaxConnLifetime = 30 * time.Second
+	cfg.MaxConnIdleTime = 10 * time.Second
 	return pgxpool.NewWithConfig(ctx, cfg)
 }
 
@@ -164,21 +168,13 @@ func (e *Engine) run(ctx context.Context, pool *pgxpool.Pool) (*Summary, error) 
 	return e.stats.FinalSummary(), nil
 }
 
-// workerLoop acquires one connection and holds it for the worker's entire
-// lifetime, executing transactions back-to-back without Acquire/Release
-// overhead — identical to pgbench's client model.
+// workerLoop acquires a connection per transaction and releases it immediately
+// after each execution. Combined with MaxConnLifetime/MaxConnIdleTime on the
+// pool, this allows expired connections to be closed on Release (instead of
+// returned to the idle list), so subsequent Acquires can reconnect to
+// newly-scaled replicas. Holding a connection for the worker's entire lifetime
+// would bypass pool-level expiry checks entirely.
 func (e *Engine) workerLoop(ctx context.Context, pool *pgxpool.Pool) {
-	var conn *pgxpool.Conn
-
-	if pool != nil {
-		var err error
-		conn, err = pool.Acquire(ctx)
-		if err != nil {
-			return // context already cancelled during startup
-		}
-		defer conn.Release()
-	}
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -190,9 +186,22 @@ func (e *Engine) workerLoop(ctx context.Context, pool *pgxpool.Pool) {
 			return
 		}
 
+		var conn *pgxpool.Conn
+		if pool != nil {
+			var err error
+			conn, err = pool.Acquire(ctx)
+			if err != nil {
+				return
+			}
+		}
+
 		start := time.Now()
 		execErr := e.config.Workload.Execute(ctx, conn)
 		e.stats.Record(time.Since(start), execErr)
+
+		if conn != nil {
+			conn.Release()
+		}
 	}
 }
 
