@@ -6,35 +6,35 @@ steps:
     rps: 50
   
   # Phase 2: Tăng dần, mỗi step tăng ~200 RPS
-  - duration: 60s
+  - duration: 60s # 2->3 
     rps: 150 # 1 replica
-  - duration: 60s
+  - duration: 60s # 3->4
     rps: 250 # 1 replica
-  - duration: 60s
+  - duration: 60s # 4->5
     rps: 350 # 1 replica
-  - duration: 60s
+  - duration: 60s # 5->6
     rps: 500 # 2 replica
-  - duration: 60s
+  - duration: 60s # 6->7
     rps: 700 # 2 replica
-  - duration: 60s
+  - duration: 60s # 7->8
     rps: 900 # 3 replica
-  - duration: 60s
+  - duration: 60s # 8->9
     rps: 1100 # 3 replica
-  - duration: 60s
+  - duration: 60s # 9-> 10
     rps: 1400 # 4-5 replica
   
   # Phase 3: Sustain peak
-  - duration: 180s
+  - duration: 180s # 10->13
     rps: 1400 # 5 replica
   
   # Phase 4: Giảm dần
-  - duration: 60s
+  - duration: 60s # 13->14
     rps: 1000
-  - duration: 60s
+  - duration: 60s # 14->15
     rps: 700
-  - duration: 60s
+  - duration: 60s # 15->16
     rps: 400
-  - duration: 60s
+  - duration: 60s # 16->17
     rps: 200
-  - duration: 120s
+  - duration: 120s # 17->19
     rps: 50
