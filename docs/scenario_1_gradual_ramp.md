@@ -39,3 +39,38 @@
 
 
 Ở phase 900-1100 RPS, actual TPS chỉ ~500-700 và actual TPS không bao giờ đạt đủ target, điều này là do hoặc controller chưa scale đủ nhanh hoặc chưa đủ replica. Tuy nhiên theo hình vẽ mình có thấy lên được tới mức 6 instance rồi nhưng có vẻ như vấn đề là do không đủ số lượng node gke để phục vụ việc test.ii
+
+
+### Third run
+Lần chạy này đã có tận 6 node nên không quá lo lắng về tranh chấp tài nguyên nữa 
+
+sau khi fix một số lỗi liên quan đến private node, disk request thì cuối cùng cũng có thể test
+
+
+![alt text](image-14.png)
+
+![alt text](image-16.png)
+
+![alt text](image-15.png)
+
+![alt text](image-17.png)
+
+
+TPS đạt 1530 ở peak (target 1400), P50 ổn định ~55-65ms ở sustained load
+=> 6 nodes giải quyết hoàn toàn bottleneck trước đó
+
+Trong 90s phút 3:05-4:35, P50 nhảy lên 275-334ms khi 1 replica bị quá tải, recovery rất nhanh khi replica mới được tạo rớt xuống 66ms rồi xuống 5ms 
+
+
+### 4th run
+
+
+### 5th run
+
+
+### 6th run
+
+
+### 7th run
+
+### 8th run
