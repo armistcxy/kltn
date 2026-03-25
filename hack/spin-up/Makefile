@@ -62,6 +62,29 @@ install-prometheus:
 	@helm install prometheus prometheus-community/kube-prometheus-stack \
 	  --namespace monitoring --create-namespace \
 	  --set grafana.adminUser=admin \
-	  --set grafana.adminPassword=admin
+	  --set grafana.adminPassword=admin \
+	  --set prometheusOperator.resources.requests.cpu=50m \
+	  --set prometheusOperator.resources.requests.memory=64Mi \
+	  --set prometheusOperator.resources.limits.cpu=200m \
+	  --set prometheusOperator.resources.limits.memory=128Mi \
+	  --set prometheus.prometheusSpec.replicas=1 \
+	  --set prometheus.prometheusSpec.retention=12h \
+	  --set prometheus.prometheusSpec.resources.requests.cpu=100m \
+	  --set prometheus.prometheusSpec.resources.requests.memory=256Mi \
+	  --set prometheus.prometheusSpec.resources.limits.cpu=500m \
+	  --set prometheus.prometheusSpec.resources.limits.memory=512Mi \
+	  --set alertmanager.enabled=false \
+	  --set grafana.resources.requests.cpu=50m \
+	  --set grafana.resources.requests.memory=64Mi \
+	  --set grafana.resources.limits.cpu=200m \
+	  --set grafana.resources.limits.memory=128Mi \
+	  --set kube-state-metrics.resources.requests.cpu=10m \
+	  --set kube-state-metrics.resources.requests.memory=32Mi \
+	  --set kube-state-metrics.resources.limits.cpu=100m \
+	  --set kube-state-metrics.resources.limits.memory=64Mi \
+	  --set prometheus-node-exporter.resources.requests.cpu=10m \
+	  --set prometheus-node-exporter.resources.requests.memory=32Mi \
+	  --set prometheus-node-exporter.resources.limits.cpu=100m \
+	  --set prometheus-node-exporter.resources.limits.memory=64Mi
 
 install-all: install-cnpg-operator install-keda install-prometheus install-metallb
