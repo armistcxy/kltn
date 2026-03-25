@@ -87,4 +87,15 @@ install-prometheus:
 	  --set prometheus-node-exporter.resources.limits.cpu=100m \
 	  --set prometheus-node-exporter.resources.limits.memory=64Mi
 
+add-gke-nodepool:
+	@echo "📦 Adding n2-standard-2 node pool to GKE cluster..."
+	@gcloud container node-pools create n2-pool \
+	  --cluster=$(CLUSTER_NAME) \
+	  --zone=$(ZONE) \
+	  --num-nodes=1 \
+	  --machine-type=n2-standard-2 \
+	  --enable-private-nodes \
+	  --disk-size=20 \
+	  --disk-type=pd-standard
+
 install-all: install-cnpg-operator install-keda install-prometheus install-metallb
