@@ -77,13 +77,14 @@ Lần chạy Hybrid này cho kết quả tệ vì có 2 vấn đề
 17:46:54  scale 4 -> 2   scale down
 ```
 
-### 5th run
+### Reactive with max 5 instances
 
 ![alt text](image-20.png)
 
-### 6th run
+![alt text](image-21.png)
 
 
-### 7th run
+### Hybrid approach with max 5 instances
+Modify the scenario a little bit
 
-### 8th run
+![alt text](image-22.png)
