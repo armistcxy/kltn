@@ -40,6 +40,9 @@ Scan 20,000 rows (20% of 1 branch), 6 aggregates
         WHERE aid BETWEEN $1 AND $1 + 19999
     ```
 
+Update: 1 node capacity: 330 TPS
+
+
 - 1 node --concurrency 10
     
     ```
@@ -418,3 +421,15 @@ c=50:  latency = 50 / 368 = 135.8ms [ ] thực tế 149ms
 ```
 
 Điều này chứng minh backend là một metric tốt cho autoscaling, khi backend tăng thì queue dài hơn, latency cũng tăng nên cần phải thêm replica
+
+### So sánh 1 replica chạy n2 với 1 replica chạy trên e2
+
+Kết quả khi chạy trên dòng máy e2
+![alt text](image-18.png)
+
+Kết quả khi chạy trên dòng máy n2
+
+![alt text](image-19.png)
+
+~450 (n2) so với ~315 (e2)
+
