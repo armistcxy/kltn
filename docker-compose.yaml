@@ -16,3 +16,13 @@ services:
       - "3001:3000"
     depends_on:
       - prometheus
+
+  pgscaleviz:
+    build:
+      context: ./pgscaleviz
+      dockerfile: Dockerfile
+    container_name: pgscaleviz
+    ports:
+      - "8080:80"
+    depends_on:
+      - prometheus
