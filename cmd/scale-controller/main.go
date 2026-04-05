@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"io"
 	"log"
 	"log/slog"
 	"net/http"
@@ -30,13 +31,20 @@ func main() {
 	dbCluster := flag.String("db-cluster", "pg-cluster", "Name of the CNPG cluster to manage")
 	watchInterval := flag.Duration("watch-interval", 10*time.Second, "How often to check the config file for changes")
 	metricsAddr := flag.String("metrics-addr", ":9091", "Address to expose controller Prometheus metrics on")
+	logFile := flag.String("log-file", "scale-controller.log", "Path to log file (written alongside stdout)")
 	flag.Parse()
 
-	// Structured logging.
+	// Structured logging — tee to stdout and a file.
 	// Use a shared slog handler so controller-runtime internals (CNPG scheme, etc.)
 	// write to the same output and format instead of emitting the "log.SetLogger
 	// was never called" warning.
-	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
+	f, err := os.OpenFile(*logFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		log.Fatalf("failed to open log file %s: %v", *logFile, err)
+	}
+	defer f.Close()
+	logWriter := io.MultiWriter(os.Stdout, f)
+	handler := slog.NewTextHandler(logWriter, &slog.HandlerOptions{Level: slog.LevelInfo})
 	slog.SetDefault(slog.New(handler))
 	ctrllog.SetLogger(logr.FromSlogHandler(handler))
 
