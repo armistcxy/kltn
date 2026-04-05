@@ -15,13 +15,15 @@ import (
 // sigs.k8s.io/yaml goes through JSON, which cannot unmarshal duration strings
 // into time.Duration (int64) directly.
 type configFile struct {
-	MinInstances int             `yaml:"minInstances"`
-	MaxInstances int             `yaml:"maxInstances"`
-	Metrics      []MetricSpec    `yaml:"metrics"`
-	Aggregation  AggregationType `yaml:"aggregation"`
-	Cooldown     string          `yaml:"cooldown"`
-	PollInterval string          `yaml:"pollInterval"`
-	Prediction   *predictionFile `yaml:"prediction,omitempty"`
+	MinInstances                 int             `yaml:"minInstances"`
+	MaxInstances                 int             `yaml:"maxInstances"`
+	Metrics                      []MetricSpec    `yaml:"metrics"`
+	Aggregation                  AggregationType `yaml:"aggregation"`
+	Cooldown                     string          `yaml:"cooldown"`
+	PollInterval                 string          `yaml:"pollInterval"`
+	Prediction                   *predictionFile `yaml:"prediction,omitempty"`
+	ScalingMode                  string          `yaml:"scalingMode"`
+	ScaleDownStabilizationWindow string          `yaml:"scaleDownStabilizationWindow"`
 }
 
 type predictionFile struct {
@@ -76,11 +78,17 @@ func LoadConfig(path string) (Config, error) {
 
 // convertConfig translates configFile into Config, parsing duration strings.
 func convertConfig(raw configFile) (Config, error) {
+	mode := ScalingMode(raw.ScalingMode)
+	if mode == "" {
+		mode = ScalingModeHybrid
+	}
+
 	cfg := Config{
 		MinInstances: raw.MinInstances,
 		MaxInstances: raw.MaxInstances,
 		Metrics:      raw.Metrics,
 		Aggregation:  raw.Aggregation,
+		ScalingMode:  mode,
 	}
 
 	if raw.PollInterval == "" {
@@ -91,6 +99,14 @@ func convertConfig(raw configFile) (Config, error) {
 		return Config{}, fmt.Errorf("pollInterval %q: %w", raw.PollInterval, err)
 	}
 	cfg.PollInterval = pollInterval
+
+	if raw.ScaleDownStabilizationWindow != "" {
+		w, err := time.ParseDuration(raw.ScaleDownStabilizationWindow)
+		if err != nil {
+			return Config{}, fmt.Errorf("scaleDownStabilizationWindow %q: %w", raw.ScaleDownStabilizationWindow, err)
+		}
+		cfg.ScaleDownStabilizationWindow = w
+	}
 
 	if raw.Cooldown == "" {
 		return Config{}, fmt.Errorf("cooldown is required")
@@ -178,6 +194,12 @@ func WatchConfig(ctx context.Context, path string, interval time.Duration, onCha
 }
 
 func validateConfig(cfg Config) error {
+	switch cfg.ScalingMode {
+	case ScalingModeReactive, ScalingModePredictive, ScalingModeHybrid:
+		// valid
+	default:
+		return fmt.Errorf("scalingMode %q is not supported (valid: reactive, predictive, hybrid)", cfg.ScalingMode)
+	}
 	if cfg.MinInstances < 1 {
 		return fmt.Errorf("minInstances must be >= 1, got %d", cfg.MinInstances)
 	}

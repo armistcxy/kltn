@@ -3,6 +3,8 @@ package scale
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"sync"
 	"time"
 
 	prometheusquery "github.com/armistcxy/kltn/pkg/prometheus-query"
@@ -11,13 +13,24 @@ import (
 // PrometheusMetricsObserver implements MetricsObserver by running arbitrary PromQL queries.
 // The PromQL queries are fully specified in each MetricSpec.Query, so this observer
 // is decoupled from any particular set of metrics.
+//
+// Stale-value protection: if a freshly-queried value is 0 but the previous known
+// good value (> 0) exists, the previous value is kept and a warning is logged.
+// This prevents spurious scale-downs caused by rate() windows not yet aligning
+// with the Prometheus scrape interval.
 type PrometheusMetricsObserver struct {
 	querier *prometheusquery.PrometheusQuerier
+
+	mu             sync.Mutex
+	lastGoodValues map[string]float64
 }
 
 // NewPrometheusMetricsObserver creates a new observer backed by Prometheus.
 func NewPrometheusMetricsObserver(querier *prometheusquery.PrometheusQuerier) *PrometheusMetricsObserver {
-	return &PrometheusMetricsObserver{querier: querier}
+	return &PrometheusMetricsObserver{
+		querier:        querier,
+		lastGoodValues: make(map[string]float64),
+	}
 }
 
 // Observe queries every MetricSpec in parallel and returns a snapshot.
@@ -57,6 +70,23 @@ func (o *PrometheusMetricsObserver) Observe(ctx context.Context, specs []MetricS
 	if len(failed) > 0 {
 		return nil, fmt.Errorf("metric query failures: %v", failed)
 	}
+
+	// Stale-value protection: replace zero values with the last known good value.
+	o.mu.Lock()
+	for name, value := range snapshot.Values {
+		if value == 0 {
+			if last, ok := o.lastGoodValues[name]; ok && last > 0 {
+				slog.Warn("metric returned 0, using last known good value",
+					"metric", name,
+					"lastGood", last,
+				)
+				snapshot.Values[name] = last
+			}
+		} else {
+			o.lastGoodValues[name] = value
+		}
+	}
+	o.mu.Unlock()
 
 	return snapshot, nil
 }

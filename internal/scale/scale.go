@@ -31,7 +31,19 @@ type ScaleController struct {
 	historyMu sync.Mutex
 	history   map[string][]DataPoint
 
+	// Scale-down stabilization window: rolling record of past reactive targets.
+	// A scale-down is only permitted when max(window) < current replicas.
+	stabilizationMu      sync.Mutex
+	reactiveTargetWindow []reactiveRecord
+
 	lastScaleAt time.Time
+}
+
+// reactiveRecord is one timestamped reactive-target observation kept in the
+// scale-down stabilization window.
+type reactiveRecord struct {
+	at     time.Time
+	target int
 }
 
 // NewScaleController creates a ScaleController with the given initial config.
@@ -77,6 +89,7 @@ func (c *ScaleController) UpdateConfig(cfg Config) {
 		"pollInterval", cfg.PollInterval,
 		"cooldown", cfg.Cooldown,
 		"aggregation", cfg.Aggregation,
+		"scalingMode", cfg.ScalingMode,
 	)
 	c.cfg = cfg
 }
@@ -150,6 +163,7 @@ func (c *ScaleController) reconcileOnce(ctx context.Context) error {
 		"target", decision.TargetInstances,
 		"reactive", decision.ReactiveTarget,
 		"predictive", decision.PredictiveTarget,
+		"mode", cfg.ScalingMode,
 		"reason", decision.Reason,
 	)
 
@@ -184,8 +198,19 @@ func (c *ScaleController) Decide(ctx context.Context, cfg Config, snapshot *Metr
 		}, nil
 	}
 
-	// Reactive target: compute desired replicas from current metric values.
-	reactiveTarget := c.computeReactiveTarget(cfg, snapshot, current)
+	// Reactive target: compute desired replicas from current metric values,
+	// then apply the scale-down stabilization window. The stabilized target is
+	// the max reactive target seen over the window — a transient dip (e.g.
+	// backends 76→4→71 within 60 s) will not lower the floor until the window expires.
+	rawReactive := c.computeReactiveTarget(cfg, snapshot, current)
+	reactiveTarget := c.stabilizedReactiveTarget(rawReactive, cfg.ScaleDownStabilizationWindow)
+	if reactiveTarget != rawReactive {
+		slog.Info("scale-down stabilization active",
+			"rawReactive", rawReactive,
+			"stabilizedReactive", reactiveTarget,
+			"window", cfg.ScaleDownStabilizationWindow,
+		)
+	}
 
 	// Predictive target: use the predictor to forecast the primary metric and map to desired replicas.
 	predictiveTarget := 0
@@ -199,12 +224,44 @@ func (c *ScaleController) Decide(ctx context.Context, cfg Config, snapshot *Metr
 		}
 	}
 
-	// Conservative approach, take the maximum of reactive and predictive.
-	target := reactiveTarget
-	if predictiveTarget > target {
-		target = predictiveTarget
+	// Compute final target based on scalingMode.
+	var target int
+	switch cfg.ScalingMode {
+	case ScalingModeReactive:
+		target = reactiveTarget
+	case ScalingModePredictive:
+		if predictiveTarget == 0 {
+			// Prediction not ready — hold current replicas.
+			slog.Info("predictive mode: waiting for sufficient history")
+			target = current
+		} else {
+			target = predictiveTarget
+		}
+	default: // ScalingModeHybrid
+		target = max(reactiveTarget, predictiveTarget)
 	}
 	target = clamp(target, cfg.MinInstances, cfg.MaxInstances)
+
+	// Scale-down guard: block scale-down if any guard metric is still above its
+	// scaleDownThreshold. Gauge metrics (e.g. backends) are more trustworthy than
+	// rate-based metrics during transient scrape gaps.
+	if target < current {
+		for _, spec := range cfg.Metrics {
+			if !spec.ScaleDownGuard {
+				continue
+			}
+			v, ok := snapshot.Values[spec.Name]
+			if ok && v > spec.ScaleDownThreshold {
+				slog.Warn("scale-down blocked by guard metric",
+					"metric", spec.Name,
+					"value", v,
+					"scaleDownThreshold", spec.ScaleDownThreshold,
+				)
+				target = current
+				break
+			}
+		}
+	}
 
 	decision := &ScaleDecision{
 		TargetInstances:  target,
@@ -242,6 +299,43 @@ func (c *ScaleController) Act(ctx context.Context, d *ScaleDecision) error {
 	}
 	c.lastScaleAt = time.Now()
 	return nil
+}
+
+// stabilizedReactiveTarget appends the latest reactiveTarget to the rolling window,
+// evicts entries older than the stabilization window, and returns the maximum target
+// seen within the window. When a scale-down is tentative (window max >= current),
+// this effectively blocks it until all recent observations confirm lower demand.
+//
+// If window is 0, the raw reactiveTarget is returned unchanged.
+func (c *ScaleController) stabilizedReactiveTarget(reactiveTarget int, window time.Duration) int {
+	if window <= 0 {
+		return reactiveTarget
+	}
+
+	now := time.Now()
+	cutoff := now.Add(-window)
+
+	c.stabilizationMu.Lock()
+	defer c.stabilizationMu.Unlock()
+
+	// Append current observation.
+	c.reactiveTargetWindow = append(c.reactiveTargetWindow, reactiveRecord{at: now, target: reactiveTarget})
+
+	// Evict records older than the stabilization window.
+	i := 0
+	for i < len(c.reactiveTargetWindow) && c.reactiveTargetWindow[i].at.Before(cutoff) {
+		i++
+	}
+	c.reactiveTargetWindow = c.reactiveTargetWindow[i:]
+
+	// Return the maximum reactive target seen within the window.
+	maxTarget := reactiveTarget
+	for _, r := range c.reactiveTargetWindow {
+		if r.target > maxTarget {
+			maxTarget = r.target
+		}
+	}
+	return maxTarget
 }
 
 // computeReactiveTarget calculates desired replicas from the current snapshot.

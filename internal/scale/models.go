@@ -35,6 +35,11 @@ type MetricSpec struct {
 	// If 0, falls back to threshold-based ±1 stepping.
 	// Example: 50 connections per replica → set to 50.
 	TargetValuePerReplica float64 `yaml:"targetValuePerReplica" json:"targetValuePerReplica"`
+
+	// ScaleDownGuard: when true, a scale-down is blocked if this metric's value
+	// is still above ScaleDownThreshold. Use for point-in-time gauges (e.g. backends)
+	// that are more reliable than rate-based metrics during transient polling gaps.
+	ScaleDownGuard bool `yaml:"scaleDownGuard" json:"scaleDownGuard"`
 }
 
 // Config is the full runtime configuration of the ScaleController.
@@ -62,7 +67,33 @@ type Config struct {
 	// Prediction is optional predictive scaling configuration.
 	// If nil or Enabled=false, prediction is skipped.
 	Prediction *PredictionConfig
+
+	// ScalingMode controls which signals drive the final replica count.
+	// Valid values: "reactive", "predictive", "hybrid" (default).
+	ScalingMode ScalingMode
+
+	// ScaleDownStabilizationWindow is how long the reactive target must continuously
+	// stay below the current replica count before a scale-down is allowed.
+	// During the window, the controller tracks the rolling maximum of reactive targets
+	// and uses that as the scale-down floor — identical to HPA's stabilization window.
+	// 0 disables stabilization (scale-down on every poll).
+	ScaleDownStabilizationWindow time.Duration
 }
+
+// ScalingMode controls which scaling signals are used to compute the final target.
+type ScalingMode string
+
+const (
+	// ScalingModeReactive uses only reactive (current-value) signals.
+	ScalingModeReactive ScalingMode = "reactive"
+
+	// ScalingModePredictive uses only predictive (forecast) signals.
+	// Falls back to current replicas if prediction is not ready.
+	ScalingModePredictive ScalingMode = "predictive"
+
+	// ScalingModeHybrid takes max(reactive, predictive). This is the default.
+	ScalingModeHybrid ScalingMode = "hybrid"
+)
 
 // AggregationType defines how per-metric desired replica counts are combined.
 type AggregationType string
