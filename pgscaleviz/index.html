@@ -412,13 +412,20 @@
     <div>
       <div class="section-label">scenario (expected TPS)</div>
       <div class="scenario-area">
-        <textarea id="scenarioInput" placeholder="120s@50, 60s@150, 60s@250, 60s@350, 60s@500, 60s@700, 60s@900, 60s@1100, 60s@1400, 180s@1400, 60s@1000, 60s@700, 60s@400, 60s@200, 120s@50
-
-or YAML steps format:
-- duration: 120s
+        <textarea id="scenarioInput" placeholder="# gradual-ramp (18 min) — paste your YAML steps:
+- duration: 180s
   rps: 50
-- duration: 60s
-  rps: 150"></textarea>
+- duration: 600s
+  rps: 50
+  end_rps: 1500
+- duration: 120s
+  rps: 1500
+- duration: 180s
+  rps: 1500
+  end_rps: 50
+
+# or compact comma format (flat steps only):
+# 180s@50, 600s@50, 120s@1500, 180s@1500"></textarea>
       </div>
     </div>
 
@@ -586,13 +593,22 @@ function parseScenario(text) {
     return buildExpected(steps);
   }
 
-  // YAML-ish format — strip comments first to avoid matching `rps:` inside `# ... | rps: N`
+  // YAML-ish format — parse block-by-block so optional end_rps aligns correctly.
+  // Strip comments first to avoid matching values inside `# ... | rps: N` annotations.
   const stripped = text.split('\n').map(line => line.replace(/#.*$/, '')).join('\n');
   const steps = [];
-  const durMatches = [...stripped.matchAll(/duration:\s*(\d+)s/g)];
-  const rpsMatches = [...stripped.matchAll(/rps:\s*(\d+)/g)];
-  for (let i = 0; i < Math.min(durMatches.length, rpsMatches.length); i++) {
-    steps.push({ dur: parseInt(durMatches[i][1]), rps: parseInt(rpsMatches[i][1]) });
+  const blocks = stripped.split(/(?=^\s*-\s)/m).filter(b => /duration:/.test(b));
+  for (const block of blocks) {
+    const durM = block.match(/duration:\s*(\d+)s/);
+    const rpsM = block.match(/\brps:\s*([\d.]+)/);
+    const endM = block.match(/end_rps:\s*([\d.]+)/);
+    if (durM && rpsM) {
+      steps.push({
+        dur:    parseInt(durM[1]),
+        rps:    parseFloat(rpsM[1]),
+        endRps: endM ? parseFloat(endM[1]) : 0,
+      });
+    }
   }
   return buildExpected(steps);
 }
@@ -601,7 +617,14 @@ function buildExpected(steps) {
   const pts = [];
   for (const s of steps) {
     const n = Math.ceil(s.dur / 5);
-    for (let i = 0; i < n; i++) pts.push(s.rps);
+    for (let i = 0; i < n; i++) {
+      if (s.endRps > 0) {
+        const progress = i / n;
+        pts.push(s.rps + (s.endRps - s.rps) * progress);
+      } else {
+        pts.push(s.rps);
+      }
+    }
   }
   return pts;
 }
@@ -714,7 +737,7 @@ function renderTPS(parsed, expected) {
         type: 'line', label: 'expected',
         data: expSlice, yAxisID: 'y',
         borderColor: run.color, borderWidth: 1.5, borderDash: [5,3],
-        pointRadius: 0, stepped: 'before',
+        pointRadius: 0, tension: 0,
         backgroundColor: 'transparent', order: 3
       });
     }
@@ -840,7 +863,7 @@ function renderOverlay(parsed, expected) {
       type:'line', label:'expected',
       data: expected.slice(0,maxN), yAxisID:'y',
       borderColor:'#6b7280', borderWidth:1, borderDash:[5,3],
-      pointRadius:0, stepped:'before', backgroundColor:'transparent', order:99
+      pointRadius:0, tension:0, backgroundColor:'transparent', order:99
     });
   }
   parsed.forEach((run,i) => {
