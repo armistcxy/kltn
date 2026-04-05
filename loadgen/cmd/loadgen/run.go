@@ -128,6 +128,9 @@ func runRun(_ *cobra.Command, _ []string) error {
 }
 
 // drivePattern adjusts the engine's rate every second according to the pattern.
+// It also updates metrics.TargetRPS so the autoscaler can use the intended load
+// as a scaling signal — avoiding connection pool pre-allocation noise from
+// pg_stat_activity.
 func drivePattern(ctx context.Context, eng *engine.Engine, pat *pattern.StepPattern) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
@@ -135,10 +138,13 @@ func drivePattern(ctx context.Context, eng *engine.Engine, pat *pattern.StepPatt
 	for {
 		select {
 		case <-ctx.Done():
+			metrics.TargetRPS.Set(0)
 			return
 		case <-ticker.C:
 			elapsed := time.Since(start)
-			eng.SetRate(pat.RPS(elapsed))
+			rps := pat.RPS(elapsed)
+			eng.SetRate(rps)
+			metrics.TargetRPS.Set(rps)
 		}
 	}
 }

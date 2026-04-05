@@ -21,9 +21,12 @@ type Pattern interface {
 }
 
 // Step is one phase in a multi-step scenario.
+// When EndRPS is non-zero, RPS is interpolated linearly from RPS → EndRPS
+// over the step's Duration.
 type Step struct {
 	Duration time.Duration `yaml:"duration"`
 	RPS      float64       `yaml:"rps"`
+	EndRPS   float64       `yaml:"end_rps"`
 }
 
 // ScenarioFile is the top-level YAML structure for scenario files.
@@ -32,6 +35,7 @@ type ScenarioFile struct {
 	Steps []struct {
 		Duration string  `yaml:"duration"`
 		RPS      float64 `yaml:"rps"`
+		EndRPS   float64 `yaml:"end_rps"`
 	} `yaml:"steps"`
 }
 
@@ -63,7 +67,7 @@ func LoadFile(path string) (*StepPattern, error) {
 		if err != nil {
 			return nil, fmt.Errorf("step %d duration: %w", i, err)
 		}
-		steps[i] = Step{Duration: d, RPS: s.RPS}
+		steps[i] = Step{Duration: d, RPS: s.RPS, EndRPS: s.EndRPS}
 		total += d
 	}
 	return &StepPattern{steps: steps, totalDur: total}, nil
@@ -72,13 +76,23 @@ func LoadFile(path string) (*StepPattern, error) {
 func (p *StepPattern) RPS(t time.Duration) float64 {
 	var cumul time.Duration
 	for _, s := range p.steps {
+		start := cumul
 		cumul += s.Duration
 		if t < cumul {
-			return s.RPS
+			if s.EndRPS == 0 {
+				return s.RPS
+			}
+			// Linear interpolation within the step.
+			progress := float64(t-start) / float64(s.Duration)
+			return s.RPS + progress*(s.EndRPS-s.RPS)
 		}
 	}
-	// After all steps: hold last RPS
-	return p.steps[len(p.steps)-1].RPS
+	// After all steps: hold last RPS (or EndRPS if the final step has one).
+	last := p.steps[len(p.steps)-1]
+	if last.EndRPS != 0 {
+		return last.EndRPS
+	}
+	return last.RPS
 }
 
 func (p *StepPattern) Done(t time.Duration) bool       { return t >= p.totalDur }

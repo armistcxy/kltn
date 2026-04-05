@@ -37,6 +37,17 @@ var (
 		Name:      "current_rps",
 		Help:      "Observed requests per second over the last reporting interval.",
 	})
+
+	// TargetRPS is the intended load from the scenario pattern at the current moment.
+	// Updated every second by drivePattern. Unlike CurrentRPS (measured from DB side)
+	// this is unaffected by connection pool pre-allocation or Prometheus scrape timing —
+	// use it as the primary scaling signal when the loadgen and controller share the same
+	// Prometheus instance.
+	TargetRPS = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: "loadgen",
+		Name:      "target_rps",
+		Help:      "Target requests per second as defined by the current scenario step.",
+	})
 )
 
 // Server starts a Prometheus metrics HTTP server on the given address.
