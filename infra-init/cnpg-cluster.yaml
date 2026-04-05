@@ -1,0 +1,44 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: pg-cluster
+spec:
+  instances: 1
+  storage:
+    size: 10Gi
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: NotIn
+                values:
+                  - gke-auto-scaling-lab-sub-pool-826a1aec-50xx
+  monitoring:
+    customQueriesConfigMap:
+      - name: cnpg-custom-queries
+        key: queries
+  bootstrap: 
+    initdb: 
+      database: app
+      owner: app
+      secret:
+        name: pg-cluster-app-user
+  postgresql:                                                               
+    parameters:                                                                                                                                               
+      max_connections: "200"                                                                                                                                  
+      shared_buffers: "1024MB"                                                                                                                                
+      wal_buffers: "64MB"           # increase: 32MB → 64MB (more WAL buffering)                                                                              
+      max_wal_size: "8GB"           # increase: 4GB → 8GB (less frequent checkpoints)                                                                       
+      min_wal_size: "2GB"           # add: keep WAL segments pre-allocated                                                                                    
+      checkpoint_completion_target: "0.9"  # add: spread checkpoint I/O over 90% of interval
+      checkpoint_timeout: "15min"   # add: less frequent checkpoints (default 5min)
+      synchronous_commit: "off"     # add: biggest write win — async commit (risk: up to 1 WAL buffer of data loss on crash)
+      wal_compression: "on"         # add: reduce WAL I/O volume
+      work_mem: "16MB"              # add: per-sort/hash memory
+      effective_cache_size: "3GB"   # add: planner hint (set to ~75% of node RAM)
+      random_page_cost: "1.1"       # add: if using SSDs
+      default_statistics_target: "100"
+      pg_stat_statements.max: "10000"
+      pg_stat_statements.track: all

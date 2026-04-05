@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cnpg-custom-queries
+  namespace: default # Hãy đảm bảo cùng namespace với cluster của bạn
+data:
+  queries: |
+    pg_stat_statements:
+      query: |
+        SELECT 
+          d.datname, 
+          pg_get_userbyid(s.userid) AS usename, 
+          s.queryid, 
+          LEFT(s.query, 100) AS query_snippet,
+          s.calls, 
+          s.total_exec_time / 1000 AS total_exec_time_seconds, 
+          s.rows
+        FROM pg_stat_statements s
+        JOIN pg_database d ON s.dbid = d.oid
+        WHERE d.datname = current_database()
+        LIMIT 100
+      metrics:
+        - datname:
+            usage: "LABEL"
+            description: "Name of the database"
+        - usename:
+            usage: "LABEL"
+            description: "Name of the user"
+        - queryid:
+            usage: "LABEL"
+            description: "Query ID"
+        - query_snippet:
+            usage: "LABEL"
+            description: "First 100 characters of the query"
+        - calls:
+            usage: "COUNTER"
+            description: "Total number of times the statement was executed"
+        - total_exec_time_seconds:
+            usage: "COUNTER"
+            description: "Total time spent in the statement, in seconds"
+        - rows:
+            usage: "COUNTER"
+            description: "Total number of rows retrieved or affected by the statement"
