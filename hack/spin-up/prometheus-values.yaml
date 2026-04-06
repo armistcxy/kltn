@@ -1,0 +1,45 @@
+alertmanager:
+  enabled: false
+
+prometheus-node-exporter:
+  enabled: false
+
+nodeExporter:
+  enabled: false
+
+prometheusOperator:
+  admissionWebhooks:
+    enabled: false
+    patch:
+      enabled: false
+  tls:
+    enabled: false
+
+grafana:
+  enabled: true
+  adminUser: admin
+  adminPassword: admin
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: default
+          orgId: 1
+          folder: ""
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/default
+  dashboards:
+    default:
+      cnpg:
+        gnetId: 20417
+        revision: 1
+        datasource: Prometheus
+
+prometheus:
+  prometheusSpec:
+    retention: 1d
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
