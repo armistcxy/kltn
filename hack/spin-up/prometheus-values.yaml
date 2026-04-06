@@ -1,12 +1,6 @@
 alertmanager:
   enabled: false
 
-prometheus-node-exporter:
-  enabled: false
-
-nodeExporter:
-  enabled: false
-
 prometheusOperator:
   admissionWebhooks:
     enabled: false
