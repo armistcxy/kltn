@@ -49,3 +49,6 @@ infra-grafana:
 
 run-pgbench:
 	docker run --rm -it zzzsleepzzz/pgbench-only bash
+
+pgbench-shell:
+	kubectl run -it pgbench --image=postgres:16 -- bash
