@@ -3,7 +3,7 @@ kind: Cluster
 metadata:
   name: pg-cluster
 spec:
-  instances: 1
+  instances: 5
   storage:
     size: 10Gi
   affinity:
@@ -14,13 +14,22 @@ spec:
               - key: kubernetes.io/hostname
                 operator: NotIn
                 values:
-                  - gke-auto-scaling-lab-sub-pool-826a1aec-50xx
+                  - gke-pg-autoscale-default-pool-0b3f4459-g364
+  backup:
+    volumeSnapshot:
+      className: cnpg-snapshot-class
+    target: prefer-standby
+  plugins:
+  - name: barman-cloud.cloudnative-pg.io
+    isWALArchiver: true
+    parameters:
+      barmanObjectName: pg-objectstore
   monitoring:
     customQueriesConfigMap:
       - name: cnpg-custom-queries
         key: queries
   bootstrap: 
-    initdb: 
+    initdb:
       database: app
       owner: app
       secret:
@@ -30,7 +39,7 @@ spec:
       max_connections: "200"                                                                                                                                  
       shared_buffers: "1024MB"                                                                                                                                
       wal_buffers: "64MB"           # increase: 32MB → 64MB (more WAL buffering)                                                                              
-      max_wal_size: "8GB"           # increase: 4GB → 8GB (less frequent checkpoints)                                                                       
+      max_wal_size: "6GB"           # increase: 4GB → 8GB (less frequent checkpoints)                                                                       
       min_wal_size: "2GB"           # add: keep WAL segments pre-allocated                                                                                    
       checkpoint_completion_target: "0.9"  # add: spread checkpoint I/O over 90% of interval
       checkpoint_timeout: "15min"   # add: less frequent checkpoints (default 5min)

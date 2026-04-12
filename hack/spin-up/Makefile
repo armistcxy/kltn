@@ -15,9 +15,19 @@ SUB_POOL_MACHINE ?= e2-standard-2
 # infra-init directory (relative to repo root)
 INFRA_DIR     ?= ../../infra-init
 
+# Backup / volume-snapshot
+REGION        ?= us-east1
+NAMESPACE     ?= default
+GSA_NAME      ?= cnpg-backup-sa
+KSA_NAME      ?= cnpg-backup-ksa
+BUCKET_NAME   ?= cnpg-wal-archive-$(PROJECT_ID)
+
 .PHONY: create delete info \
         install-cnpg-operator install-keda install-metallb install-prometheus install-all \
-        add-sub-pool apply-infra grafana-forward setup-gke
+        add-sub-pool apply-infra grafana-forward setup-gke \
+        enable-csi-driver install-snapshot-crds install-snapshot-controller \
+        create-gcs-bucket create-backup-gsa create-backup-ksa enable-workload-identity \
+        install-barman-plugin apply-backup-resources init-volume-snapshot
 
 create:
 	@echo "👉 make create (TARGET=$(TARGET), CLUSTER_NAME=$(CLUSTER_NAME))"
@@ -115,3 +125,78 @@ add-gke-nodepool:
 	  --disk-type=pd-standard
 
 install-all: install-cnpg-operator install-keda install-prometheus install-metallb
+
+# ---------------------------------------------------------------------------
+# Volume Snapshot & Backup setup (GKE only)
+# ---------------------------------------------------------------------------
+
+enable-csi-driver:
+	@echo "📦 Enabling GCE Persistent Disk CSI driver..."
+	@gcloud container clusters update $(CLUSTER_NAME) \
+	  --update-addons=GcePersistentDiskCsiDriver=ENABLED \
+	  --region $(REGION)
+
+install-snapshot-crds:
+	@echo "📦 Installing VolumeSnapshot CRDs..."
+	@kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
+	@kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
+	@kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
+
+install-snapshot-controller:
+	@echo "📦 Installing snapshot controller..."
+	@kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml
+	@kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/deploy/kubernetes/snapshot-controller/setup-snapshot-controller.yaml
+	@kubectl apply -f $(INFRA_DIR)/volumesnapshotclass.yaml
+
+create-gcs-bucket:
+	@echo "🪣 Creating GCS bucket gs://$(BUCKET_NAME)..."
+	@gcloud storage buckets create gs://$(BUCKET_NAME) \
+	  --location=$(REGION) \
+	  --uniform-bucket-level-access
+	@gcloud storage buckets describe gs://$(BUCKET_NAME)
+
+create-backup-gsa:
+	@echo "🔑 Creating Google Service Account $(GSA_NAME)..."
+	@gcloud iam service-accounts create $(GSA_NAME) \
+	  --display-name="CNPG Backup Service Account"
+	@gcloud storage buckets add-iam-policy-binding gs://$(BUCKET_NAME) \
+	  --member="serviceAccount:$(GSA_NAME)@$(PROJECT_ID).iam.gserviceaccount.com" \
+	  --role="roles/storage.objectAdmin"
+
+create-backup-ksa:
+	@echo "🔑 Creating Kubernetes Service Account $(KSA_NAME)..."
+	@kubectl create serviceaccount $(KSA_NAME) -n $(NAMESPACE)
+
+enable-workload-identity:
+	@echo "🔗 Enabling Workload Identity and binding GSA ↔ KSA..."
+	@gcloud container clusters update $(CLUSTER_NAME) \
+	  --region=$(REGION) \
+	  --workload-pool=$(PROJECT_ID).svc.id.goog
+	@gcloud container node-pools update default-pool \
+	  --cluster=$(CLUSTER_NAME) \
+	  --region=$(REGION) \
+	  --workload-metadata=GKE_METADATA
+	@gcloud iam service-accounts add-iam-policy-binding \
+	  $(GSA_NAME)@$(PROJECT_ID).iam.gserviceaccount.com \
+	  --role="roles/iam.workloadIdentityUser" \
+	  --member="serviceAccount:$(PROJECT_ID).svc.id.goog[$(NAMESPACE)/$(KSA_NAME)]"
+	@kubectl annotate serviceaccount $(KSA_NAME) -n $(NAMESPACE) \
+	  iam.gke.io/gcp-service-account=$(GSA_NAME)@$(PROJECT_ID).iam.gserviceaccount.com
+
+install-barman-plugin:
+	@echo "📦 Installing cert-manager and barman cloud plugin..."
+	@kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
+	@kubectl rollout status deployment/cert-manager -n cert-manager --timeout=120s
+	@kubectl apply -f https://github.com/cloudnative-pg/plugin-barman-cloud/releases/download/v0.11.0/manifest.yaml
+
+apply-backup-resources:
+	@echo "📦 Applying ObjectStore and ScheduledBackup..."
+	@kubectl apply -f $(INFRA_DIR)/objectstore.yaml
+	@kubectl apply -f $(INFRA_DIR)/backup.yaml
+	@echo "✅ Backup resources applied"
+
+init-volume-snapshot: enable-csi-driver install-snapshot-crds install-snapshot-controller \
+                      create-gcs-bucket create-backup-gsa create-backup-ksa \
+                      enable-workload-identity install-barman-plugin apply-backup-resources
+	@echo ""
+	@echo "✅ Volume snapshot & backup setup complete!"

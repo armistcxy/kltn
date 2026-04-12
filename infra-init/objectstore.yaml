@@ -1,0 +1,12 @@
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: pg-objectstore
+spec:
+  configuration:
+    destinationPath: gs://cnpg-wal-archive-project-2080f0ab-2615-4dba-a30/pg-cluster # Change your project ID here
+    googleCredentials:
+      gkeEnvironment: true
+    wal:
+      compression: gzip
+      maxParallel: 4
