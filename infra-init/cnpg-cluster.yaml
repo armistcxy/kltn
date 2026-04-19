@@ -3,9 +3,13 @@ kind: Cluster
 metadata:
   name: pg-cluster
 spec:
-  instances: 5
+  instances: 1
   storage:
-    size: 10Gi
+    size: 5Gi
+  serviceAccountTemplate:
+    metadata:
+      annotations:
+        iam.gke.io/gcp-service-account: cnpg-backup-sa@project-eea01d7e-b0e2-44f2-976.iam.gserviceaccount.com
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
@@ -14,10 +18,10 @@ spec:
               - key: kubernetes.io/hostname
                 operator: NotIn
                 values:
-                  - gke-pg-autoscale-default-pool-0b3f4459-g364
+                  - gke-auto-scaling-lab-default-pool-ba812d2f-pflx
   backup:
     volumeSnapshot:
-      className: cnpg-snapshot-class
+      className: cnpg-snapshot-class     
     target: prefer-standby
   plugins:
   - name: barman-cloud.cloudnative-pg.io

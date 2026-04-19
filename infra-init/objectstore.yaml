@@ -4,7 +4,7 @@ metadata:
   name: pg-objectstore
 spec:
   configuration:
-    destinationPath: gs://cnpg-wal-archive-project-2080f0ab-2615-4dba-a30/pg-cluster # Change your project ID here
+    destinationPath: gs://cnpg-wal-archive-project-eea01d7e-b0e2-44f2-976/pg-cluster
     googleCredentials:
       gkeEnvironment: true
     wal:

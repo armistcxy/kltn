@@ -1,11 +1,8 @@
 apiVersion: postgresql.cnpg.io/v1
-kind: ScheduledBackup
+kind: Backup
 metadata:
-  name: pg-cluster-snapshot-backup
+  name: pg-cluster-backup
 spec:
-  schedule: "0 2 * * *"
-  backupOwnerReference: self
   method: volumeSnapshot
   cluster:
     name: pg-cluster
-  immediate: true
