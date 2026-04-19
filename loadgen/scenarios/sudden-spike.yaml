@@ -1,0 +1,22 @@
+name: sudden_spike
+steps:
+  - duration: 180s
+    rps: 50
+
+  - duration: 180s
+    rps: 1300
+
+  - duration: 180s
+    rps: 50
+
+  - duration: 180s
+    rps: 1800
+
+  - duration: 180s
+    rps: 50
+
+  - duration: 60s
+    rps: 900
+
+  - duration: 60s
+    rps: 50

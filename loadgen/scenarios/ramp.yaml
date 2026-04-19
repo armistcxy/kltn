@@ -1,16 +1,4 @@
 name: ramp
 steps:
-  - duration: 60s
+  - duration: 20s
     rps: 100
-  - duration: 60s
-    rps: 500
-  - duration: 120s
-    rps: 1000
-  - duration: 60s
-    rps: 2000
-  - duration: 120s
-    rps: 3000
-  - duration: 60s
-    rps: 1000
-  - duration: 60s
-    rps: 200

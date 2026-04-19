@@ -118,7 +118,8 @@ func (w *PgbenchReadHeavy) branchRangeReport(ctx context.Context, conn *pgxpool.
 		`SELECT aid, bid, abalance
 		 FROM pgbench_accounts
 		 WHERE aid BETWEEN $1 AND $1 + $2 - 1
-		 ORDER BY abalance DESC`,
+		 ORDER BY abalance DESC
+		 LIMIT 100`,
 		startAID, w.scanSize,
 	)
 	if err != nil {
