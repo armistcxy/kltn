@@ -526,9 +526,13 @@ function getRunStats(run) {
 
 // ── Parser ──────────────────────────────────────────────────────────────────
 
+function toMs(val, unit) {
+  return unit === 's' ? parseFloat(val) * 1000 : parseFloat(val);
+}
+
 function parseLog(text) {
   if (!text) return [];
-  const re = /\[\s*([\d]+m[\d]+s|[\d]+s)\]\s+TPS:\s+([\d.]+)\s*\|\s*P50:\s*([\d.]+)ms\s*\|\s*P95:\s*([\d.]+)ms\s*\|\s*P99:\s*([\d.]+)ms/g;
+  const re = /\[\s*([\d]+m[\d]+s|[\d]+s)\]\s+TPS:\s+([\d.]+)\s*\|\s*P50:\s*([\d.]+)(ms|s)\s*\|\s*P95:\s*([\d.]+)(ms|s)\s*\|\s*P99:\s*([\d.]+)(ms|s)/g;
   const rows = [];
   let m;
   while ((m = re.exec(text)) !== null) {
@@ -536,9 +540,9 @@ function parseLog(text) {
     rows.push({
       t,
       tps: parseFloat(m[2]),
-      p50: parseFloat(m[3]),
-      p95: parseFloat(m[4]),
-      p99: parseFloat(m[5]),
+      p50: toMs(m[3], m[4]),
+      p95: toMs(m[5], m[6]),
+      p99: toMs(m[7], m[8]),
     });
   }
 
@@ -760,9 +764,11 @@ function renderTPS(parsed, expected) {
       fill: true, order: 1
     });
 
+    const maxTPS = Math.max(...run.data.map(d=>d.tps), ...(expSlice.length ? expSlice : [0]));
+    const maxLat = Math.max(...run.data.map(d=>d.p95));
     CHART_INSTANCES[cid] = new Chart(document.getElementById(cid), {
       data: { labels, datasets },
-      options: chartOptions(labels, 1700, 500)
+      options: chartOptions(labels, Math.ceil(maxTPS * 1.15), Math.ceil(maxLat * 1.15))
     });
   });
 }
@@ -876,9 +882,10 @@ function renderOverlay(parsed, expected) {
     });
   });
 
+  const maxTPS_all = Math.max(...parsed.flatMap(r=>r.data.map(d=>d.tps)), ...(expected.length ? expected : [0]));
   CHART_INSTANCES[cid1] = new Chart(document.getElementById(cid1), {
     data: { labels, datasets: datasets1 },
-    options: chartOptions(labels, 1700, null, false)
+    options: chartOptions(labels, Math.ceil(maxTPS_all * 1.15), null, false)
   });
 
   // P95 overlay
