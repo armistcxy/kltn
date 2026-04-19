@@ -36,7 +36,9 @@ gcloud container clusters create "$CLUSTER_NAME" \
   --machine-type "$MACHINE_TYPE" \
   --disk-type "$DISK_TYPE" \
   --disk-size "$DISK_SIZE" \
-  --enable-ip-alias
+  --enable-ip-alias \
+  --workload-pool="${PROJECT_ID}.svc.id.goog" \
+  --workload-metadata=GKE_METADATA
 
 # ===== Fetch kubeconfig =====
 gcloud container clusters get-credentials "$CLUSTER_NAME" \
