@@ -10,6 +10,11 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// connPool is the minimal interface satisfied by both *pgxpool.Pool and *DiscoveryPool.
+type connPool interface {
+	Acquire(context.Context) (*pgxpool.Conn, error)
+}
+
 // Workload is executed repeatedly by each worker goroutine.
 // Each worker holds a single persistent *pgxpool.Conn for its lifetime —
 // matching pgbench's one-connection-per-client model and eliminating
@@ -38,6 +43,9 @@ type Config struct {
 	// OnSnapshot is called after each reporting interval with the current stats.
 	// If nil, FormatSnapshot output is printed to stdout.
 	OnSnapshot func(Snapshot)
+	// Discovery, when non-nil, replaces DBURL with dynamic per-pod pool management.
+	// The engine resolves the headless service DNS and maintains one pool per pod.
+	Discovery *DiscoveryPool
 }
 
 // Engine manages the load generation loop.
@@ -95,6 +103,24 @@ func (e *Engine) SetPool(pool *pgxpool.Pool) {
 // Run connects to the database, spawns workers, and drives load until the
 // context is cancelled or the configured Duration elapses.
 func (e *Engine) Run(ctx context.Context) (*Summary, error) {
+	// Discovery mode: resolve headless service DNS → per-pod pools.
+	if e.config.Discovery != nil {
+		dp := e.config.Discovery
+		if err := dp.Start(ctx); err != nil {
+			return nil, fmt.Errorf("discovery: %w", err)
+		}
+		defer dp.Close()
+		// Prepare workload using any available pod pool.
+		if p, ok := e.config.Workload.(Preparer); ok {
+			if pool := dp.AnyPool(); pool != nil {
+				if err := p.Prepare(ctx, pool); err != nil {
+					return nil, fmt.Errorf("workload prepare: %w", err)
+				}
+			}
+		}
+		return e.run(ctx, dp)
+	}
+
 	if e.pool == nil {
 		pool, err := e.connect(ctx)
 		if err != nil {
@@ -122,14 +148,40 @@ func (e *Engine) connect(ctx context.Context) (*pgxpool.Pool, error) {
 
 // run is the internal execution loop. It always applies the configured Duration
 // as a hard deadline on top of ctx, so tests can call it directly with any context.
-func (e *Engine) run(ctx context.Context, pool *pgxpool.Pool) (*Summary, error) {
+// cp may be a *pgxpool.Pool (single target) or a *DiscoveryPool (multi-pod).
+func (e *Engine) run(ctx context.Context, cp connPool) (*Summary, error) {
 	runCtx, cancel := context.WithTimeout(ctx, e.config.Duration)
 	defer cancel()
 
-	// One-time workload setup (e.g. scale factor detection from DB).
-	if p, ok := e.config.Workload.(Preparer); ok && pool != nil {
-		if err := p.Prepare(runCtx, pool); err != nil {
-			return nil, fmt.Errorf("workload prepare: %w", err)
+	// One-time workload setup for single-pool mode (discovery mode calls Prepare in Run()).
+	if pool, ok := cp.(*pgxpool.Pool); ok {
+		if p, ok := e.config.Workload.(Preparer); ok && pool != nil {
+			if err := p.Prepare(runCtx, pool); err != nil {
+				return nil, fmt.Errorf("workload prepare: %w", err)
+			}
+		}
+	}
+
+	// Pre-warm the connection pool before starting the stats clock.
+	// For DiscoveryPool, warmup uses AcquireForWorker so each pod gets exactly
+	// concurrency/podCount connections pre-opened, matching the worker affinity.
+	if cp != nil {
+		warmup := make([]*pgxpool.Conn, e.config.Concurrency)
+		for i := range warmup {
+			var err error
+			if dp, ok := cp.(*DiscoveryPool); ok {
+				warmup[i], err = dp.AcquireForWorker(runCtx, i)
+			} else {
+				warmup[i], err = cp.Acquire(runCtx)
+			}
+			if err != nil {
+				break
+			}
+		}
+		for _, c := range warmup {
+			if c != nil {
+				c.Release()
+			}
 		}
 	}
 
@@ -137,11 +189,11 @@ func (e *Engine) run(ctx context.Context, pool *pgxpool.Pool) (*Summary, error) 
 	e.stats.Start()
 
 	var wg sync.WaitGroup
-	for range e.config.Concurrency {
+	for i := range e.config.Concurrency {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			e.workerLoop(runCtx, pool)
+			e.workerLoop(runCtx, cp, i)
 		}()
 	}
 
@@ -168,13 +220,11 @@ func (e *Engine) run(ctx context.Context, pool *pgxpool.Pool) (*Summary, error) 
 	return e.stats.FinalSummary(), nil
 }
 
-// workerLoop acquires a connection per transaction and releases it immediately
-// after each execution. Combined with MaxConnLifetime/MaxConnIdleTime on the
-// pool, this allows expired connections to be closed on Release (instead of
-// returned to the idle list), so subsequent Acquires can reconnect to
-// newly-scaled replicas. Holding a connection for the worker's entire lifetime
-// would bypass pool-level expiry checks entirely.
-func (e *Engine) workerLoop(ctx context.Context, pool *pgxpool.Pool) {
+// workerLoop acquires a connection per transaction and releases it immediately.
+// workerIdx pins this worker to a specific pod when using DiscoveryPool:
+// the assigned pod is workerIdx % podCount, which naturally redistributes
+// workers to new pods when the cluster scales without disrupting stable workers.
+func (e *Engine) workerLoop(ctx context.Context, pool connPool, workerIdx int) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -189,7 +239,11 @@ func (e *Engine) workerLoop(ctx context.Context, pool *pgxpool.Pool) {
 		var conn *pgxpool.Conn
 		if pool != nil {
 			var err error
-			conn, err = pool.Acquire(ctx)
+			if dp, ok := pool.(*DiscoveryPool); ok {
+				conn, err = dp.AcquireForWorker(ctx, workerIdx)
+			} else {
+				conn, err = pool.Acquire(ctx)
+			}
 			if err != nil {
 				return
 			}
