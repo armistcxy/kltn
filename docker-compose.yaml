@@ -23,6 +23,6 @@ services:
       dockerfile: Dockerfile
     container_name: pgscaleviz
     ports:
-      - "8080:80"
+      - "8081:80"
     depends_on:
       - prometheus
