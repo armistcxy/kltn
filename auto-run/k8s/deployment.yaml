@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auto-run
+  namespace: default
+  labels:
+    app: auto-run
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auto-run
+  template:
+    metadata:
+      labels:
+        app: auto-run
+    spec:
+      # Workload Identity: KSA auto-run-ksa impersonates the GCP service account
+      # annotated in rbac.yaml — không cần mount key JSON.
+      serviceAccountName: auto-run-ksa
+
+      containers:
+        - name: auto-run
+          image: zzzsleepzzz/auto-run:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: MATRIX_FILE
+              value: /config/matrix.yaml
+            - name: REPO_ROOT
+              value: /repo
+            - name: RESULTS_DIR
+              value: /results
+            - name: UPLOADS_DIR
+              value: /uploads
+            - name: UI_DIR
+              value: /ui
+            # Không cần GOOGLE_APPLICATION_CREDENTIALS — Workload Identity
+            # cung cấp credentials tự động qua metadata server của GKE.
+          volumeMounts:
+            - name: matrix-config
+              mountPath: /config
+            - name: results
+              mountPath: /results
+            - name: uploads
+              mountPath: /uploads
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /api/status
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+      volumes:
+        - name: matrix-config
+          configMap:
+            name: auto-run-matrix
+        - name: results
+          emptyDir: {}
+        - name: uploads
+          emptyDir: {}

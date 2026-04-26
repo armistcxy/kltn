@@ -1,0 +1,121 @@
+# Seed ConfigMap for matrix.yaml — overwritten by the auto-run server at runtime.
+# Apply this once to bootstrap; the server will keep it up to date.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: auto-run-matrix
+  namespace: default
+data:
+  matrix.yaml: |
+    defaults:
+      concurrency: 100
+      db_url: "postgres://app:password@pg-cluster-r/app"
+      prometheus_url: "http://prometheus-operated.monitoring:9090"
+      gcs_bucket: "run-results-project-eea01d7e-b0e2-44f2-976"
+      worker_node: "gke-auto-scaling-lab-default-pool-ba812d2f-pflx"
+
+    runs:
+      # ── gradual-ramp ──────────────────────────────────────────────
+      - id: hybrid-gradual-ramp
+        config: scale-controller-config/hybrid.yaml
+        scenario: loadgen/scenarios/gradual-ramp.yaml
+        tags: [thesis-eval, hybrid]
+
+      - id: predictive-gradual-ramp
+        config: scale-controller-config/predictive-only.yaml
+        scenario: loadgen/scenarios/gradual-ramp.yaml
+        tags: [thesis-eval, predictive]
+
+      - id: reactive-gradual-ramp
+        config: scale-controller-config/reactive-only.yaml
+        scenario: loadgen/scenarios/gradual-ramp.yaml
+        tags: [thesis-eval, reactive]
+
+      - id: cpu-only-gradual-ramp
+        config: scale-controller-config/cpu-only.yaml
+        scenario: loadgen/scenarios/gradual-ramp.yaml
+        tags: [thesis-eval, baseline, cpu-only]
+
+      # ── sudden-spike ──────────────────────────────────────────────
+      - id: hybrid-sudden-spike
+        config: scale-controller-config/hybrid.yaml
+        scenario: loadgen/scenarios/sudden-spike.yaml
+        tags: [thesis-eval, hybrid]
+
+      - id: predictive-sudden-spike
+        config: scale-controller-config/predictive-only.yaml
+        scenario: loadgen/scenarios/sudden-spike.yaml
+        tags: [thesis-eval, predictive]
+
+      - id: reactive-sudden-spike
+        config: scale-controller-config/reactive-only.yaml
+        scenario: loadgen/scenarios/sudden-spike.yaml
+        tags: [thesis-eval, reactive]
+
+      - id: cpu-only-sudden-spike
+        config: scale-controller-config/cpu-only.yaml
+        scenario: loadgen/scenarios/sudden-spike.yaml
+        tags: [thesis-eval, baseline, cpu-only]
+
+      # ── periodic-wave ─────────────────────────────────────────────
+      - id: hybrid-periodic-wave
+        config: scale-controller-config/hybrid.yaml
+        scenario: loadgen/scenarios/periodic-wave.yaml
+        tags: [thesis-eval, hybrid]
+
+      - id: predictive-periodic-wave
+        config: scale-controller-config/predictive-only.yaml
+        scenario: loadgen/scenarios/periodic-wave.yaml
+        tags: [thesis-eval, predictive]
+
+      - id: reactive-periodic-wave
+        config: scale-controller-config/reactive-only.yaml
+        scenario: loadgen/scenarios/periodic-wave.yaml
+        tags: [thesis-eval, reactive]
+
+      - id: cpu-only-periodic-wave
+        config: scale-controller-config/cpu-only.yaml
+        scenario: loadgen/scenarios/periodic-wave.yaml
+        tags: [thesis-eval, baseline, cpu-only]
+
+      # ── real-world-mix ────────────────────────────────────────────
+      - id: hybrid-real-world-mix
+        config: scale-controller-config/hybrid.yaml
+        scenario: loadgen/scenarios/real-world-mix.yaml
+        tags: [thesis-eval, hybrid]
+
+      - id: predictive-real-world-mix
+        config: scale-controller-config/predictive-only.yaml
+        scenario: loadgen/scenarios/real-world-mix.yaml
+        tags: [thesis-eval, predictive]
+
+      - id: reactive-real-world-mix
+        config: scale-controller-config/reactive-only.yaml
+        scenario: loadgen/scenarios/real-world-mix.yaml
+        tags: [thesis-eval, reactive]
+
+      - id: cpu-only-real-world-mix
+        config: scale-controller-config/cpu-only.yaml
+        scenario: loadgen/scenarios/real-world-mix.yaml
+        tags: [thesis-eval, baseline, cpu-only]
+
+      # ── endurance-mixed ───────────────────────────────────────────
+      - id: hybrid-endurance-mixed
+        config: scale-controller-config/hybrid.yaml
+        scenario: loadgen/scenarios/endurance-mixed.yaml
+        tags: [thesis-eval, hybrid, endurance]
+
+      - id: predictive-endurance-mixed
+        config: scale-controller-config/predictive-only.yaml
+        scenario: loadgen/scenarios/endurance-mixed.yaml
+        tags: [thesis-eval, predictive, endurance]
+
+      - id: reactive-endurance-mixed
+        config: scale-controller-config/reactive-only.yaml
+        scenario: loadgen/scenarios/endurance-mixed.yaml
+        tags: [thesis-eval, reactive, endurance]
+
+      - id: cpu-only-endurance-mixed
+        config: scale-controller-config/cpu-only.yaml
+        scenario: loadgen/scenarios/endurance-mixed.yaml
+        tags: [thesis-eval, baseline, cpu-only, endurance]

@@ -1,0 +1,72 @@
+# ServiceAccount với Workload Identity annotation.
+# Thay project-2080f0ab-2615-4dba-a30 và GSA_EMAIL bằng giá trị thực tế.
+#
+# Setup Workload Identity (chạy một lần):
+  # gcloud iam service-accounts add-iam-policy-binding \
+  #   auto-run-gsa@project-2080f0ab-2615-4dba-a30.iam.gserviceaccount.com \
+  #   --role roles/iam.workloadIdentityUser \
+  #   --member "serviceAccount:project-2080f0ab-2615-4dba-a30.svc.id.goog[default/auto-run-ksa]"
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: auto-run-ksa
+  namespace: default
+  annotations:
+    # GCP service account được phép impersonate qua Workload Identity.
+    iam.gke.io/gcp-service-account: auto-run-gsa@project-eea01d7e-b0e2-44f2-976.iam.gserviceaccount.com
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: auto-run
+rules:
+  # CNPG Cluster — read + patch spec.instances for reset
+  - apiGroups: ["postgresql.cnpg.io"]
+    resources: ["clusters"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+
+  # CNPG Backup — create + watch for post-benchmark backup step
+  - apiGroups: ["postgresql.cnpg.io"]
+    resources: ["backups"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+
+  # Core workloads — manage controller Deployments, loadgen Jobs, ConfigMaps
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Pod log access for collecting controller + loadgen logs
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+
+  # PVC patch — fix dangling PVCs in reset step (cnpg.io/pvcStatus annotation)
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "patch"]
+
+  # Node info for validating worker_node
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: auto-run
+subjects:
+  - kind: ServiceAccount
+    name: auto-run-ksa
+    namespace: default
+roleRef:
+  kind: ClusterRole
+  name: auto-run
+  apiGroup: rbac.authorization.k8s.io
