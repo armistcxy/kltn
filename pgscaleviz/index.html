@@ -450,6 +450,7 @@
       <button class="tab" onclick="switchTab('percentiles')">percentiles</button>
       <button class="tab" onclick="switchTab('saturation')">saturation</button>
       <button class="tab" onclick="switchTab('summary')">summary table</button>
+      <button class="tab" onclick="switchTab('controller')">controller</button>
     </div>
 
     <div id="panel-tps" class="chart-panel active"></div>
@@ -458,6 +459,7 @@
     <div id="panel-percentiles" class="chart-panel"></div>
     <div id="panel-saturation" class="chart-panel"></div>
     <div id="panel-summary" class="chart-panel"></div>
+    <div id="panel-controller" class="chart-panel"></div>
   </main>
 </div>
 
@@ -468,10 +470,10 @@ const CHART_INSTANCES = {};
 let runs = [];
 let runIdCounter = 0;
 
-function addRun(name='', log='', color=null) {
+function addRun(name='', log='', color=null, controllerLog='') {
   const id = ++runIdCounter;
   const c = color || COLORS[(runs.length) % COLORS.length];
-  runs.push({ id, name, log, color: c });
+  runs.push({ id, name, log, color: c, controllerLog });
   renderRunList();
   return id;
 }
@@ -497,6 +499,15 @@ function renderRunList() {
       <textarea placeholder="paste loadgen output here..."
         onchange="updateRun(${run.id},'log',this.value)"
         oninput="updateRun(${run.id},'log',this.value)">${run.log}</textarea>
+      <div style="border-top:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:5px;padding:5px 12px;cursor:pointer;color:var(--muted);font-size:10px;font-family:'JetBrains Mono',monospace;user-select:none"
+          onclick="const ta=this.nextElementSibling;ta.style.display=ta.style.display==='none'?'block':'none'">
+          ▸ controller log (optional — shows target replicas)
+        </div>
+        <textarea style="display:none;width:100%;min-height:72px;background:transparent;border:none;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.5;padding:6px 12px;resize:vertical;outline:none"
+          placeholder="paste scale-controller stdout here...&#10;time=... msg=decision action=scale-up target=3 ..."
+          oninput="updateRun(${run.id},'controllerLog',this.value)">${run.controllerLog || ''}</textarea>
+      </div>
       <div class="run-card-footer">
         <span class="run-stats" id="stats-${run.id}">${getRunStats(run)}</span>
       </div>
@@ -633,6 +644,35 @@ function buildExpected(steps) {
   return pts;
 }
 
+// ── Replica log parser ───────────────────────────────────────────────────────
+
+function parseReplicaLog(text) {
+  if (!text) return [];
+  const rows = [];
+  // Supports: [2m30s] → 3 | [2m30s] instances: 3 | [2m30s] target: 3 | [2m30s] 3
+  const re = /\[\s*([\d]+m[\d]+s|[\d]+s)\]\s*(?:→|instances:|replicas:|target:)?\s*(\d+)/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    rows.push({ t: parseTime(m[1]), instances: parseInt(m[2]) });
+  }
+  return rows.sort((a, b) => a.t - b.t);
+}
+
+function replicaToSeries(replicaData, logData) {
+  if (!replicaData.length || !logData.length) return [];
+  const result = [];
+  let current = null;
+  let rIdx = 0;
+  for (const point of logData) {
+    while (rIdx < replicaData.length && replicaData[rIdx].t <= point.t) {
+      current = replicaData[rIdx].instances;
+      rIdx++;
+    }
+    result.push(current);
+  }
+  return result;
+}
+
 // ── Charting helpers ─────────────────────────────────────────────────────────
 
 function destroyChart(id) {
@@ -652,20 +692,277 @@ function makeCanvas(id, height=320) {
   return { wrap, canvas: c };
 }
 
-function timeLabel(i) {
-  const sec = (i + 1) * 5;
-  if (sec % 60 === 0) return `${sec/60}m`;
-  if (sec % 30 === 0) return `${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`;
-  return '';
+function makeTimeLabels(nOrTimestamps) {
+  const timestamps = Array.isArray(nOrTimestamps)
+    ? nOrTimestamps
+    : Array.from({length: nOrTimestamps}, (_, i) => (i + 1) * 5);
+  return timestamps.map(t => {
+    if (t % 60 === 0) return `${t/60}m`;
+    if (t % 30 === 0) return `${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}`;
+    return '';
+  });
 }
 
-function makeTimeLabels(n) {
-  return Array.from({length:n},(_,i)=>timeLabel(i));
-}
-
-function tooltipTime(i) {
-  const sec = (i+1)*5;
+function tooltipTime(sec) {
   return `${Math.floor(sec/60)}m${String(sec%60).padStart(2,'0')}s`;
+}
+
+// ── Controller log parser ────────────────────────────────────────────────────
+
+function parseControllerLog(text) {
+  if (!text.trim()) return { metrics: [], decisions: [] };
+
+  const lines = text.split('\n');
+  let startTime = null;
+  const metrics = [];
+  const decisions = [];
+
+  function getRelSec(isoStr) {
+    const ms = new Date(isoStr).getTime();
+    if (!startTime) startTime = ms;
+    return (ms - startTime) / 1000;
+  }
+
+  function parseKV(line) {
+    const kv = {};
+    // match key=value or key="quoted value"
+    const re = /(\w+)=("(?:[^"\\]|\\.)*"|[^\s]+)/g;
+    let m;
+    while ((m = re.exec(line)) !== null) {
+      kv[m[1]] = m[2].replace(/^"|"$/g, '');
+    }
+    return kv;
+  }
+
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const kv = parseKV(line);
+    if (!kv.time) continue;
+
+    const t = getRelSec(kv.time);
+    const msg = kv.msg;
+
+    if (msg === 'metrics observed') {
+      // at= gives the actual observation timestamp
+      const atT = kv.at ? getRelSec(kv.at) : t;
+      // values="map[key:num key:num]"
+      const valStr = kv.values || '';
+      const valMap = {};
+      const kvRe = /([\w_]+):([\d.eE+\-]+)/g;
+      let vm;
+      while ((vm = kvRe.exec(valStr)) !== null) {
+        valMap[vm[1]] = parseFloat(vm[2]);
+      }
+      if (Object.keys(valMap).length) {
+        metrics.push({ t: atT, values: valMap });
+      }
+    } else if (msg === 'decision') {
+      decisions.push({
+        t,
+        action:     kv.action || 'none',
+        target:     parseInt(kv.target     ?? '0'),
+        reactive:   parseInt(kv.reactive   ?? '0'),
+        predictive: parseInt(kv.predictive ?? '0'),
+        mode:       kv.mode || '',
+        reason:     kv.reason || '',
+      });
+    }
+  }
+
+  return { metrics, decisions };
+}
+
+// ── Derive target series from controller log ─────────────────────────────────
+
+function deriveReplicaSeries(controllerLogText, logData) {
+  if (!controllerLogText || !logData.length) return null;
+  const { decisions } = parseControllerLog(controllerLogText);
+  if (!decisions.length) return null;
+
+  const targetData = decisions.map(d => ({ t: d.t, instances: d.target }));
+
+  return {
+    targetSeries: replicaToSeries(targetData, logData),
+    decisions,
+  };
+}
+
+// ── Controller charts ─────────────────────────────────────────────────────────
+
+function renderController() {
+  const panel = document.getElementById('panel-controller');
+  panel.innerHTML = '';
+
+  // Use controller logs from all runs; show each run separately
+  const runsWithCtrl = runs.filter(r => r.controllerLog && r.controllerLog.trim());
+  if (!runsWithCtrl.length) {
+    showEmpty(panel, 'Add a controller log to any run and click render');
+    return;
+  }
+
+  for (const run of runsWithCtrl) {
+    renderControllerRun(panel, run);
+  }
+}
+
+function renderControllerRun(panel, run) {
+  const raw = run.controllerLog;
+  const { metrics, decisions } = parseControllerLog(raw);
+
+  if (!metrics.length && !decisions.length) {
+    showEmpty(panel, 'Paste scale-controller log and click render');
+    return;
+  }
+
+  // Collect all metric keys
+  const metricKeys = [...new Set(metrics.flatMap(m => Object.keys(m.values)))];
+
+  // ── Chart 1: metric values over time ──
+  if (metrics.length) {
+    const box = document.createElement('div');
+    box.className = 'chart-box';
+    const legendHTML = metricKeys.map((k, i) =>
+      `<span class="legend-item"><span class="legend-line" style="background:${COLORS[i % COLORS.length]}"></span>${k}</span>`
+    ).join('');
+    box.innerHTML = `
+      <div class="chart-title" style="color:${run.color}">${run.name || 'run '+run.id}</div>
+      <div class="chart-subtitle">observed metric values</div>
+      <div class="legend">${legendHTML}</div>
+    `;
+    const cid = `ctrl-metrics-${run.id}`;
+    const { wrap } = makeCanvas(cid, 280);
+    box.appendChild(wrap);
+    panel.appendChild(box);
+    destroyChart(cid);
+
+    const labels = metrics.map(m => {
+      const t = m.t;
+      if (t % 60 === 0) return `${t/60}m`;
+      if (t < 60) return `${Math.round(t)}s`;
+      return `${Math.floor(t/60)}m${String(Math.round(t%60)).padStart(2,'0')}s`;
+    });
+
+    const datasets = metricKeys.map((k, i) => ({
+      label: k,
+      data: metrics.map(m => m.values[k] ?? null),
+      borderColor: COLORS[i % COLORS.length],
+      borderWidth: 2,
+      pointRadius: 3,
+      tension: 0.2,
+      backgroundColor: 'transparent',
+      spanGaps: true,
+    }));
+
+    const tsArr = metrics.map(m => m.t);
+    CHART_INSTANCES[cid] = new Chart(document.getElementById(cid), {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: ctx => {
+                const t = tsArr[ctx[0].dataIndex] ?? 0;
+                return `${Math.floor(t/60)}m${String(Math.round(t%60)).padStart(2,'0')}s`;
+              },
+              label: ctx => ` ${ctx.dataset.label}: ${ctx.raw?.toFixed(4)}`
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { color: '#6b7280', font: { size: 11 }, maxRotation: 0 }, grid: { color: 'rgba(255,255,255,0.05)' } },
+          y: { min: 0, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#6b7280', font: { size: 11 } } }
+        }
+      }
+    });
+  }
+
+  // ── Chart 2: scaling decisions ──
+  if (decisions.length) {
+    const box2 = document.createElement('div');
+    box2.className = 'chart-box';
+    box2.innerHTML = `
+      <div class="chart-title" style="color:${run.color}">${run.name || 'run '+run.id}</div>
+      <div class="chart-subtitle">scaling decisions — target / reactive / predictive</div>
+      <div class="legend">
+        <span class="legend-item"><span class="legend-line" style="background:#a78bfa"></span>target</span>
+        <span class="legend-item"><span class="legend-line" style="background:#60a5fa"></span>reactive</span>
+        <span class="legend-item"><span class="legend-line" style="background:#fbbf24"></span>predictive</span>
+      </div>
+    `;
+    const cid2 = `ctrl-decisions-${run.id}`;
+    const { wrap: wrap2 } = makeCanvas(cid2, 240);
+    box2.appendChild(wrap2);
+    panel.appendChild(box2);
+    destroyChart(cid2);
+
+    const labels2 = decisions.map(d => {
+      const t = d.t;
+      if (t < 60) return `${Math.round(t)}s`;
+      return `${Math.floor(t/60)}m${String(Math.round(t%60)).padStart(2,'0')}s`;
+    });
+
+    const actionColors = decisions.map(d =>
+      d.action === 'scale-up'   ? 'rgba(52,211,153,0.18)' :
+      d.action === 'scale-down' ? 'rgba(248,113,113,0.18)' :
+      'transparent'
+    );
+
+    const tsArr2 = decisions.map(d => d.t);
+    CHART_INSTANCES[cid2] = new Chart(document.getElementById(cid2), {
+      type: 'line',
+      data: {
+        labels: labels2,
+        datasets: [
+            { label:'target',     data: decisions.map(d=>d.target),        borderColor:'#a78bfa', borderWidth:2.5, stepped:'before', pointRadius:4, pointBackgroundColor: decisions.map(d => d.action==='scale-up'?'#34d399':d.action==='scale-down'?'#f87171':'#a78bfa'), tension:0, backgroundColor:'transparent' },
+            { label:'reactive',   data: decisions.map(d=>d.reactive),      borderColor:'#60a5fa', borderWidth:1.5, stepped:'before', pointRadius:2, tension:0, backgroundColor:'transparent' },
+            { label:'predictive', data: decisions.map(d=>d.predictive),    borderColor:'#fbbf24', borderWidth:1.5, stepped:'before', pointRadius:2, tension:0, borderDash:[4,3], backgroundColor:'transparent' },
+          ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: ctx => {
+                const i = ctx[0].dataIndex;
+                const t = tsArr2[i] ?? 0;
+                const d = decisions[i];
+                return `${Math.floor(t/60)}m${String(Math.round(t%60)).padStart(2,'0')}s  [${d.action}]`;
+              },
+              label: ctx => ` ${ctx.dataset.label}: ${ctx.raw}`,
+              afterBody: ctx => {
+                const d = decisions[ctx[0].dataIndex];
+                return d.reason ? [`  reason: ${d.reason}`] : [];
+              }
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { color: '#6b7280', font: { size: 11 }, maxRotation: 0 }, grid: { color: 'rgba(255,255,255,0.05)' } },
+          y: { min: 0, ticks: { color: '#6b7280', font: { size: 11 }, stepSize: 1, precision: 0 }, grid: { color: 'rgba(255,255,255,0.05)' }, title: { display: true, text: 'instances', color: '#6b7280', font: { size: 11 } } }
+        }
+      }
+    });
+
+    // Action summary pills
+    const scaleUps   = decisions.filter(d=>d.action==='scale-up').length;
+    const scaleDowns = decisions.filter(d=>d.action==='scale-down').length;
+    const nones      = decisions.filter(d=>d.action==='none').length;
+    const pills = document.createElement('div');
+    pills.style.cssText = 'display:flex;gap:8px;margin-top:12px;flex-wrap:wrap';
+    pills.innerHTML = `
+      <span style="font-family:'JetBrains Mono',monospace;font-size:11px;padding:3px 10px;border-radius:4px;background:rgba(52,211,153,0.12);color:#34d399;border:1px solid rgba(52,211,153,0.2)">↑ scale-up ×${scaleUps}</span>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:11px;padding:3px 10px;border-radius:4px;background:rgba(248,113,113,0.12);color:#f87171;border:1px solid rgba(248,113,113,0.2)">↓ scale-down ×${scaleDowns}</span>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:11px;padding:3px 10px;border-radius:4px;background:rgba(107,114,128,0.12);color:#6b7280;border:1px solid rgba(107,114,128,0.2)">— none ×${nones}</span>
+    `;
+    box2.appendChild(pills);
+  }
 }
 
 // ── Render all ───────────────────────────────────────────────────────────────
@@ -681,6 +978,7 @@ function renderAll() {
   renderPercentiles(parsed);
   renderSaturation(parsed);
   renderSummary(parsed);
+  renderController();
 }
 
 // ── TPS Timeline (one chart per run) ────────────────────────────────────────
@@ -714,7 +1012,14 @@ function renderTPS(parsed, expected) {
     box.className = 'chart-box';
 
     const n = run.data.length;
-    const labels = makeTimeLabels(n);
+    const timestamps = run.data.map(d => d.t);
+    const labels = makeTimeLabels(timestamps);
+
+    const ctrlDerived = deriveReplicaSeries(run.controllerLog || '', run.data);
+    const hasCtrl = !!ctrlDerived;
+    const maxInst = hasCtrl
+      ? Math.max(...ctrlDerived.targetSeries.filter(v => v !== null))
+      : 0;
 
     box.innerHTML = `
       <div class="chart-title">TPS timeline</div>
@@ -723,6 +1028,7 @@ function renderTPS(parsed, expected) {
         ${expected.length ? `<span class="legend-item"><span class="legend-dash" style="border-color:${run.color};opacity:.4"></span>expected</span>` : ''}
         <span class="legend-item"><span class="legend-line" style="background:${run.color}"></span>actual TPS</span>
         <span class="legend-item"><span class="legend-line" style="background:#f87171"></span>P95 latency (right)</span>
+        ${hasCtrl ? `<span class="legend-item"><span class="legend-line" style="background:#a78bfa"></span>target replicas</span>` : ''}
       </div>
     `;
 
@@ -764,11 +1070,24 @@ function renderTPS(parsed, expected) {
       fill: true, order: 1
     });
 
+    if (hasCtrl) {
+      datasets.push({
+        type: 'line', label: 'target replicas',
+        data: ctrlDerived.targetSeries, yAxisID: 'y3',
+        borderColor: '#a78bfa', borderWidth: 2.5,
+        pointRadius: 3, pointBackgroundColor: ctrlDerived.decisions.map(d =>
+          d.action === 'scale-up' ? '#34d399' : d.action === 'scale-down' ? '#f87171' : '#a78bfa'
+        ),
+        stepped: 'before', tension: 0,
+        backgroundColor: 'transparent', order: 0
+      });
+    }
+
     const maxTPS = Math.max(...run.data.map(d=>d.tps), ...(expSlice.length ? expSlice : [0]));
     const maxLat = Math.max(...run.data.map(d=>d.p95));
     CHART_INSTANCES[cid] = new Chart(document.getElementById(cid), {
       data: { labels, datasets },
-      options: chartOptions(labels, Math.ceil(maxTPS * 1.15), Math.ceil(maxLat * 1.15))
+      options: chartOptions(labels, Math.ceil(maxTPS * 1.15), Math.ceil(maxLat * 1.15), true, hasCtrl ? maxInst + 1 : 0, timestamps)
     });
   });
 }
@@ -785,7 +1104,8 @@ function renderLatency(parsed, expected) {
     const box = document.createElement('div');
     box.className = 'chart-box';
     const n = run.data.length;
-    const labels = makeTimeLabels(n);
+    const timestamps = run.data.map(d => d.t);
+    const labels = makeTimeLabels(timestamps);
 
     box.innerHTML = `
       <div class="chart-title">latency timeline</div>
@@ -818,7 +1138,7 @@ function renderLatency(parsed, expected) {
         interaction: { mode:'index', intersect:false },
         plugins: { legend:{display:false}, tooltip:{
           callbacks:{
-            title: ctx => tooltipTime(ctx[0].dataIndex),
+            title: ctx => tooltipTime(timestamps[ctx[0].dataIndex] ?? (ctx[0].dataIndex + 1) * 5),
             label: ctx => ` ${ctx.dataset.label}: ${ctx.raw.toFixed(1)}ms`
           }
         }},
@@ -918,7 +1238,7 @@ function renderOverlay(parsed, expected) {
       interaction: { mode:'index', intersect:false },
       plugins: { legend:{display:false}, tooltip:{
         callbacks:{
-          title: ctx => tooltipTime(ctx[0].dataIndex),
+          title: ctx => tooltipTime((ctx[0].dataIndex + 1) * 5),
           label: ctx => ` ${ctx.dataset.label}: ${ctx.raw.toFixed(1)}ms`
         }
       }},
@@ -1121,7 +1441,7 @@ function xScale(labels) {
   };
 }
 
-function chartOptions(labels, maxY=1700, maxY2=500, dualAxis=true) {
+function chartOptions(labels, maxY=1700, maxY2=500, dualAxis=true, maxInstances=0, timestamps=null) {
   const scales = {
     x: xScale(labels),
     y: {
@@ -1139,15 +1459,24 @@ function chartOptions(labels, maxY=1700, maxY2=500, dualAxis=true) {
       title:{display:true,text:'P95 (ms)',color:'#f87171',font:{size:11}}
     };
   }
+  if (maxInstances > 0) {
+    scales.y3 = {
+      position:'right', offset:true, min:0, max:maxInstances,
+      grid:{drawOnChartArea:false},
+      ticks:{color:'#a78bfa',font:{size:11},stepSize:1,precision:0},
+      title:{display:true,text:'replicas',color:'#a78bfa',font:{size:11}}
+    };
+  }
   return {
     responsive:true, maintainAspectRatio:false,
     interaction:{mode:'index',intersect:false},
     plugins:{
       legend:{display:false},
       tooltip:{callbacks:{
-        title: ctx => tooltipTime(ctx[0].dataIndex),
+        title: ctx => tooltipTime(timestamps ? (timestamps[ctx[0].dataIndex] ?? (ctx[0].dataIndex + 1) * 5) : (ctx[0].dataIndex + 1) * 5),
         label: ctx => {
-          if (ctx.dataset.yAxisID==='y2') return ` ${ctx.dataset.label}: ${ctx.raw.toFixed(1)}ms`;
+          if (ctx.dataset.yAxisID==='y2') return ` ${ctx.dataset.label}: ${ctx.raw?.toFixed(1)}ms`;
+          if (ctx.dataset.yAxisID==='y3') return ` replicas: ${ctx.raw}`;
           return ` ${ctx.dataset.label}: ${Math.round(ctx.raw)} TPS`;
         }
       }}
@@ -1178,74 +1507,98 @@ function switchTab(name) {
 
 function loadSample() {
   document.getElementById('scenarioInput').value =
-    '120s@50, 60s@150, 15s@200, 15s@220, 15s@240, 15s@280, 20s@300, 20s@330, 20s@360, 30s@450, 30s@530, 30s@680, 30s@750, 30s@800, 30s@950, 60s@1100, 60s@1400, 180s@1500, 60s@1200, 60s@800, 60s@500, 60s@200, 120s@100';
+    '180s@50, 120s@300, 120s@620, 120s@940, 120s@1260, 120s@1580, 120s@1900, 120s@1900, 90s@1140, 90s@380';
 
   // clear existing
   runs = [];
   runIdCounter = 0;
 
-  const sampleStatic = `[   5s] TPS:   149.2 | P50: 51.90ms | P95: 325.38ms | P99: 409.09ms | Errors: 0 | Total: 746
-[  10s] TPS:    50.2 | P50: 13.87ms | P95: 76.48ms | P99: 102.27ms | Errors: 0 | Total: 997
-[ 2m0s] TPS:    50.0 | P50:  4.44ms | P95: 18.14ms | P99: 26.99ms | Errors: 0 | Total: 6497
-[ 2m5s] TPS:   154.0 | P50:  4.32ms | P95: 12.28ms | P99: 20.22ms | Errors: 0 | Total: 7267
-[ 5m0s] TPS:   350.0 | P50:  4.29ms | P95:  7.88ms | P99: 10.74ms | Errors: 0 | Total: 51556
-[ 6m0s] TPS:   507.2 | P50:  4.50ms | P95: 12.06ms | P99: 20.45ms | Errors: 0 | Total: 81623
-[ 7m0s] TPS:   707.4 | P50:  6.04ms | P95: 17.07ms | P99: 29.07ms | Errors: 0 | Total: 123659
-[ 8m0s] TPS:   907.9 | P50:  5.39ms | P95: 22.50ms | P99: 33.38ms | Errors: 0 | Total: 177694
-[ 9m0s] TPS:  1111.0 | P50:  6.51ms | P95: 29.68ms | P99: 52.32ms | Errors: 0 | Total: 243756
-[10m0s] TPS:  1402.4 | P50:  8.34ms | P95: 47.26ms | P99: 76.54ms | Errors: 0 | Total: 327775
-[11m0s] TPS:  1401.4 | P50:  7.20ms | P95: 34.02ms | P99: 56.70ms | Errors: 0 | Total: 411785
-[12m0s] TPS:  1464.0 | P50: 11.44ms | P95: 82.30ms | P99: 129.79ms | Errors: 0 | Total: 495838
-[13m0s] TPS:  1385.4 | P50: 10.68ms | P95: 90.17ms | P99: 155.65ms | Errors: 0 | Total: 579765
-[14m0s] TPS:   988.8 | P50:  5.75ms | P95: 65.25ms | P99: 172.16ms | Errors: 0 | Total: 639712
-[15m0s] TPS:   691.6 | P50:  5.17ms | P95: 19.54ms | P99: 48.09ms | Errors: 0 | Total: 681674
-[16m0s] TPS:   400.1 | P50:  4.82ms | P95: 10.38ms | P99: 17.31ms | Errors: 0 | Total: 705655
-[17m0s] TPS:   200.0 | P50:  4.52ms | P95:  9.79ms | P99: 14.25ms | Errors: 0 | Total: 717617
-[18m0s] TPS:    50.0 | P50:  6.11ms | P95: 10.18ms | P99: 15.93ms | Errors: 0 | Total: 720588
+  // no-autoscaler: fixed replicas, saturates at ~580 TPS, avg 350 TPS
+  const sampleNoAutoscaler = `[   5s] TPS:   148.2 | P50: 46.80ms | P95: 302.44ms | P99: 388.18ms | Errors: 0 | Total: 741
+[ 1m0s] TPS:    50.0 | P50:  4.18ms | P95: 14.82ms | P99: 22.44ms | Errors: 0 | Total: 3741
+[ 2m0s] TPS:    50.0 | P50:  4.22ms | P95: 14.44ms | P99: 21.82ms | Errors: 0 | Total: 6741
+[ 3m0s] TPS:    50.0 | P50:  4.28ms | P95: 14.88ms | P99: 22.18ms | Errors: 0 | Total: 9741
+[ 4m0s] TPS:   180.4 | P50:  5.12ms | P95: 18.44ms | P99: 28.82ms | Errors: 0 | Total: 20565
+[ 5m0s] TPS:   392.8 | P50:  7.18ms | P95: 34.82ms | P99: 58.44ms | Errors: 0 | Total: 44133
+[ 6m0s] TPS:   578.4 | P50: 16.44ms | P95: 128.82ms | P99: 208.44ms | Errors: 0 | Total: 78837
+[ 7m0s] TPS:   582.8 | P50: 24.18ms | P95: 242.44ms | P99: 374.82ms | Errors: 0 | Total: 113805
+[ 8m0s] TPS:   576.4 | P50: 25.82ms | P95: 252.18ms | P99: 388.44ms | Errors: 0 | Total: 148389
+[ 9m0s] TPS:   571.2 | P50: 26.18ms | P95: 256.82ms | P99: 394.44ms | Errors: 0 | Total: 182661
+[10m0s] TPS:   568.8 | P50: 26.44ms | P95: 260.44ms | P99: 398.18ms | Errors: 0 | Total: 216789
+[11m0s] TPS:   565.4 | P50: 26.82ms | P95: 264.18ms | P99: 402.82ms | Errors: 0 | Total: 250713
+[12m0s] TPS:   562.2 | P50: 27.18ms | P95: 267.82ms | P99: 406.44ms | Errors: 0 | Total: 284445
+[13m0s] TPS:   559.8 | P50: 27.44ms | P95: 271.44ms | P99: 410.18ms | Errors: 0 | Total: 318033
+[14m0s] TPS:   472.4 | P50: 19.82ms | P95: 178.44ms | P99: 292.18ms | Errors: 0 | Total: 346377
+[15m0s] TPS:   308.8 | P50: 10.44ms | P95: 68.82ms | P99: 118.44ms | Errors: 0 | Total: 364905
+[16m0s] TPS:   114.4 | P50:  5.82ms | P95: 20.44ms | P99: 34.18ms | Errors: 0 | Total: 371769
+[17m0s] TPS:    56.8 | P50:  4.88ms | P95: 15.82ms | P99: 23.44ms | Errors: 0 | Total: 375177
+[18m0s] TPS:    50.0 | P50:  4.44ms | P95: 13.82ms | P99: 20.44ms | Errors: 0 | Total: 378177
 ╔═══════════════════════════════════════╗
 ║           Final Summary               ║
 ╠═══════════════════════════════════════╣
 ║  Duration:      18m59.802s            ║
-║  Total Ops:     723578                ║
+║  Total Ops:     399012                ║
 ║  Errors:        0                     ║
-║  TPS:           634.83                ║
-║  P50 Latency:   5.939ms               ║
-║  P95 Latency:   39.231ms              ║
-║  P99 Latency:   89.343ms              ║
-║  P99.9 Latency: 195.711ms             ║
+║  TPS:           350.07                ║
+║  P50 Latency:   18.284ms              ║
+║  P95 Latency:   172.384ms             ║
+║  P99 Latency:   278.448ms             ║
+║  P99.9 Latency: 428.284ms             ║
 ╚═══════════════════════════════════════╝`;
 
-  const sampleHybrid = `[   5s] TPS:   101.6 | P50: 17.60ms | P95: 299.01ms | P99: 354.81ms | Errors: 0 | Total: 508
-[ 2m0s] TPS:    50.0 | P50:  5.31ms | P95:  8.19ms | P99: 13.41ms | Errors: 0 | Total: 6258
-[ 4m0s] TPS:   249.8 | P50:  4.96ms | P95:  7.75ms | P99: 11.48ms | Errors: 0 | Total: 30260
-[ 6m0s] TPS:   499.7 | P50:  6.39ms | P95: 60.96ms | P99: 84.29ms | Errors: 0 | Total: 81256
-[ 7m0s] TPS:   735.0 | P50: 156.93ms | P95: 307.97ms | P99: 347.65ms | Errors: 0 | Total: 121380
-[ 8m0s] TPS:   877.4 | P50: 33.57ms | P95: 244.22ms | P99: 337.15ms | Errors: 0 | Total: 179905
-[ 9m0s] TPS:  1098.6 | P50:  6.38ms | P95: 47.87ms | P99: 69.06ms | Errors: 0 | Total: 238504
-[10m0s] TPS:  1402.4 | P50:  8.34ms | P95: 47.26ms | P99: 76.54ms | Errors: 0 | Total: 327775
-[11m0s] TPS:  1397.6 | P50:  6.67ms | P95: 46.21ms | P99: 70.59ms | Errors: 0 | Total: 406531
-[12m0s] TPS:  1396.8 | P50:  7.34ms | P95: 41.98ms | P99: 63.77ms | Errors: 0 | Total: 490547
-[13m0s] TPS:  1438.3 | P50:  7.30ms | P95: 70.53ms | P99: 146.18ms | Errors: 0 | Total: 574571
-[14m0s] TPS:  1001.9 | P50:  5.31ms | P95: 25.39ms | P99: 84.35ms | Errors: 0 | Total: 634593
-[15m0s] TPS:   699.2 | P50:  5.69ms | P95: 13.81ms | P99: 22.72ms | Errors: 0 | Total: 676584
-[16m0s] TPS:   400.2 | P50:  4.82ms | P95:  8.15ms | P99: 12.05ms | Errors: 0 | Total: 700882
-[17m0s] TPS:   200.0 | P50:  3.83ms | P95:  6.01ms | P99:  7.03ms | Errors: 0 | Total: 522251
-[18m0s] TPS:    50.0 | P50:  5.46ms | P95:  8.40ms | P99: 12.39ms | Errors: 0 | Total: 525495
+  // hybrid autoscaler: scales up to ~760 TPS, P95 spike during scale-up then recovers, avg 450 TPS
+  const sampleHybrid = `[   5s] TPS:   144.8 | P50: 44.20ms | P95: 296.18ms | P99: 368.44ms | Errors: 0 | Total: 724
+[ 1m0s] TPS:    50.0 | P50:  4.22ms | P95: 14.18ms | P99: 21.82ms | Errors: 0 | Total: 3724
+[ 2m0s] TPS:    50.0 | P50:  4.18ms | P95: 13.82ms | P99: 20.44ms | Errors: 0 | Total: 6724
+[ 3m0s] TPS:    50.0 | P50:  4.24ms | P95: 14.44ms | P99: 21.18ms | Errors: 0 | Total: 9724
+[ 4m0s] TPS:   188.4 | P50:  5.18ms | P95: 18.82ms | P99: 29.44ms | Errors: 0 | Total: 21028
+[ 5m0s] TPS:   408.8 | P50:  7.44ms | P95: 36.18ms | P99: 60.82ms | Errors: 0 | Total: 45556
+[ 6m0s] TPS:   622.4 | P50: 12.18ms | P95: 72.44ms | P99: 112.82ms | Errors: 0 | Total: 82900
+[ 7m0s] TPS:   686.2 | P50: 98.44ms | P95: 284.18ms | P99: 342.82ms | Errors: 0 | Total: 124072
+[ 8m0s] TPS:   730.8 | P50:  9.82ms | P95: 48.44ms | P99: 78.18ms | Errors: 0 | Total: 167920
+[ 9m0s] TPS:   746.4 | P50:  8.44ms | P95: 38.82ms | P99: 62.44ms | Errors: 0 | Total: 212704
+[10m0s] TPS:   756.2 | P50:  8.18ms | P95: 36.44ms | P99: 58.82ms | Errors: 0 | Total: 258076
+[11m0s] TPS:   763.8 | P50:  8.44ms | P95: 38.18ms | P99: 61.82ms | Errors: 0 | Total: 303904
+[12m0s] TPS:   766.4 | P50:  8.82ms | P95: 40.44ms | P99: 65.18ms | Errors: 0 | Total: 349888
+[13m0s] TPS:   768.2 | P50:  8.44ms | P95: 39.82ms | P99: 63.44ms | Errors: 0 | Total: 395980
+[14m0s] TPS:   716.8 | P50:  7.18ms | P95: 28.44ms | P99: 46.82ms | Errors: 0 | Total: 438988
+[15m0s] TPS:   470.4 | P50:  5.82ms | P95: 18.44ms | P99: 30.18ms | Errors: 0 | Total: 467212
+[16m0s] TPS:   192.8 | P50:  4.88ms | P95: 14.82ms | P99: 23.44ms | Errors: 0 | Total: 478780
+[17m0s] TPS:    88.4 | P50:  4.44ms | P95: 12.18ms | P99: 18.82ms | Errors: 0 | Total: 484084
+[18m0s] TPS:    50.0 | P50:  4.18ms | P95: 11.82ms | P99: 17.44ms | Errors: 0 | Total: 487084
 ╔═══════════════════════════════════════╗
 ║           Final Summary               ║
 ╠═══════════════════════════════════════╣
 ║  Duration:      18m59.974s            ║
-║  Total Ops:     707082                ║
+║  Total Ops:     513408                ║
 ║  Errors:        0                     ║
-║  TPS:           620.26                ║
-║  P50 Latency:   7.991ms               ║
-║  P95 Latency:   94.719ms              ║
-║  P99 Latency:   147.071ms             ║
-║  P99.9 Latency: 224.639ms             ║
+║  TPS:           450.44                ║
+║  P50 Latency:   8.284ms               ║
+║  P95 Latency:   46.184ms              ║
+║  P99 Latency:   72.448ms              ║
+║  P99.9 Latency: 148.284ms             ║
 ╚═══════════════════════════════════════╝`;
 
-  addRun('static-5', sampleStatic, '#34d399');
-  addRun('hybrid', sampleHybrid, '#fb7185');
+  const ctrlNoAutoscaler = `time=2026-04-20T03:12:00.000Z level=INFO msg="scale controller started" pollInterval=60s metrics=2
+time=2026-04-20T03:13:00.010Z level=INFO msg=decision action=none target=2 reactive=2 predictive=2 mode=hybrid reason="no scaling needed"
+time=2026-04-20T03:14:00.012Z level=INFO msg=decision action=none target=2 reactive=2 predictive=2 mode=hybrid reason="no scaling needed"
+time=2026-04-20T03:18:00.014Z level=INFO msg=decision action=none target=2 reactive=2 predictive=2 mode=hybrid reason="no scaling needed"`;
+
+  const ctrlHybrid = `time=2026-04-20T03:12:00.000Z level=INFO msg="scale controller started" pollInterval=60s metrics=2
+time=2026-04-20T03:13:00.010Z level=INFO msg="metrics observed" at=2026-04-20T03:13:00.000Z values="map[avg_latency:12.8 backends:148]"
+time=2026-04-20T03:13:00.012Z level=INFO msg=decision action=none target=2 reactive=2 predictive=2 mode=hybrid reason="no scaling needed"
+time=2026-04-20T03:15:00.014Z level=INFO msg="metrics observed" at=2026-04-20T03:15:00.000Z values="map[avg_latency:38.4 backends:312]"
+time=2026-04-20T03:15:00.016Z level=INFO msg=decision action=scale-up target=3 reactive=3 predictive=2 mode=hybrid reason="reactive scale-up"
+time=2026-04-20T03:16:00.018Z level=INFO msg="metrics observed" at=2026-04-20T03:16:00.000Z values="map[avg_latency:96.2 backends:486]"
+time=2026-04-20T03:16:00.020Z level=INFO msg=decision action=scale-up target=4 reactive=4 predictive=3 mode=hybrid reason="reactive scale-up"
+time=2026-04-20T03:17:00.022Z level=INFO msg=decision action=none target=4 reactive=4 predictive=4 mode=hybrid reason="no scaling needed"
+time=2026-04-20T03:20:00.024Z level=INFO msg="metrics observed" at=2026-04-20T03:20:00.000Z values="map[avg_latency:18.2 backends:280]"
+time=2026-04-20T03:20:00.026Z level=INFO msg=decision action=scale-down target=3 reactive=3 predictive=3 mode=hybrid reason="all metrics below down-threshold"
+time=2026-04-20T03:22:00.028Z level=INFO msg="metrics observed" at=2026-04-20T03:22:00.000Z values="map[avg_latency:8.4 backends:88]"
+time=2026-04-20T03:22:00.030Z level=INFO msg=decision action=scale-down target=2 reactive=2 predictive=2 mode=hybrid reason="all metrics below down-threshold"`;
+
+  addRun('no-autoscaler', sampleNoAutoscaler, '#34d399', ctrlNoAutoscaler);
+  addRun('hybrid', sampleHybrid, '#fb7185', ctrlHybrid);
   renderRunList();
   setTimeout(renderAll, 100);
 }
