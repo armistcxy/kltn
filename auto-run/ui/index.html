@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Auto-Run Benchmark Harness</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────── -->
+<header>
+  <h1>⚡ Auto-Run Benchmark Harness</h1>
+  <span class="session" id="session-label">session: —</span>
+  <span id="orch-status" class="status-badge badge-queued">idle</span>
+  <button class="ctrl-btn btn-start"  id="btn-start">▶ Start</button>
+  <button class="ctrl-btn btn-pause"  id="btn-pause">⏸ Pause</button>
+  <button class="ctrl-btn btn-stop"   id="btn-stop">⏹ Stop</button>
+  <button class="ctrl-btn btn-add"    id="btn-add-run">＋ Add Run</button>
+</header>
+
+<!-- ── Main layout ────────────────────────────── -->
+<div class="layout">
+
+  <!-- Left: run list -->
+  <aside class="run-list" id="run-list">
+    <p style="color:var(--text2);padding:8px;font-size:12px">Loading…</p>
+  </aside>
+
+  <!-- Right: detail panel -->
+  <main class="detail">
+    <div class="detail-tabs">
+      <button class="tab-btn active" data-tab="progress">Progress</button>
+      <button class="tab-btn" data-tab="config">Config</button>
+      <button class="tab-btn" data-tab="scenario">Scenario</button>
+      <button class="tab-btn" data-tab="files">Files</button>
+      <button class="tab-btn" data-tab="settings">Settings</button>
+    </div>
+
+    <!-- Tab: Progress -->
+    <div class="tab-panel active" id="tab-progress">
+      <div id="no-run-msg" style="color:var(--text2)">Select a run to see details.</div>
+
+      <div id="run-detail" style="display:none;flex-direction:column;gap:12px">
+        <div>
+          <div class="section-title" style="margin-bottom:6px">Steps</div>
+          <div class="steps-bar" id="steps-bar"></div>
+        </div>
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <span class="section-title">Live Log</span>
+            <label style="font-size:11px;color:var(--text2);display:flex;align-items:center;gap:4px">
+              <input type="checkbox" id="autoscroll" checked /> auto-scroll
+            </label>
+          </div>
+          <div class="log-box" id="log-box"></div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="ctrl-btn btn-add" id="btn-retry" style="font-size:12px">↺ Retry</button>
+          <button class="ctrl-btn btn-stop" id="btn-delete-run" style="font-size:12px;background:var(--surface2);color:var(--red);border:1px solid var(--red)">✕ Delete</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Config -->
+    <div class="tab-panel" id="tab-config">
+      <div class="section-title">scale-controller config.yaml</div>
+      <pre class="yaml-box" id="config-yaml">—</pre>
+    </div>
+
+    <!-- Tab: Scenario -->
+    <div class="tab-panel" id="tab-scenario">
+      <div class="section-title">loadgen scenario.yaml</div>
+      <pre class="yaml-box" id="scenario-yaml">—</pre>
+    </div>
+
+    <!-- Tab: Files -->
+    <div class="tab-panel" id="tab-files">
+      <div class="files-header">
+        <div>
+          <span class="section-title">Uploaded Files</span>
+          <span style="color:var(--text2);font-size:11px;margin-left:8px">
+            Uploaded files override repo-relative paths when the filename matches.
+          </span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="file-category" class="category-select">
+            <option value="configs">configs</option>
+            <option value="scenarios">scenarios</option>
+          </select>
+          <label class="upload-label" for="file-upload-input">
+            ⬆ Upload
+            <input type="file" id="file-upload-input" accept=".yaml,.yml" multiple style="display:none" />
+          </label>
+        </div>
+      </div>
+
+      <div class="file-list" id="file-list">
+        <p style="color:var(--text2);font-size:12px">No files uploaded yet.</p>
+      </div>
+
+      <!-- File content preview -->
+      <div id="file-preview" style="display:none;flex-direction:column;gap:8px;margin-top:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span class="section-title" id="preview-title">preview</span>
+          <button class="ctrl-btn btn-stop" id="btn-close-preview"
+            style="font-size:11px;padding:3px 10px;background:var(--surface2);color:var(--text2);border:1px solid var(--border)">
+            ✕ close
+          </button>
+        </div>
+        <pre class="yaml-box" id="preview-content" style="max-height:400px"></pre>
+      </div>
+    </div>
+
+    <!-- Tab: Settings -->
+    <div class="tab-panel" id="tab-settings">
+      <div class="section-title" style="margin-bottom:12px">Global Defaults</div>
+      <form class="settings-form" id="settings-form">
+        <label>Concurrency</label>
+        <input type="number" name="concurrency" min="1" />
+        <label>DB URL</label>
+        <input type="text" name="db_url" />
+        <label>Prometheus URL</label>
+        <input type="text" name="prometheus_url" />
+        <label>GCS Bucket</label>
+        <input type="text" name="gcs_bucket" />
+        <label>Worker Node</label>
+        <input type="text" name="worker_node" placeholder="leave empty to skip" />
+        <label>Scale Factor (0 = auto-detect)</label>
+        <input type="number" name="scale_factor" min="0" />
+        <button type="submit" class="save-btn">Save</button>
+      </form>
+      <p class="error-msg" id="settings-error" style="margin-top:8px"></p>
+    </div>
+  </main>
+</div>
+
+<!-- ── Add/Edit Run Modal ─────────────────────── -->
+<div class="modal-backdrop" id="run-modal">
+  <div class="modal">
+    <h2 id="modal-title">Add Run</h2>
+    <div class="modal-fields">
+      <div class="field-group">
+        <label>ID (unique)</label>
+        <input type="text" id="modal-id" placeholder="hybrid-gradual-ramp" />
+      </div>
+      <div class="field-group">
+        <label>Config path (relative to repo root)</label>
+        <input type="text" id="modal-config" placeholder="config.example.yaml" />
+      </div>
+      <div class="field-group">
+        <label>Scenario path (relative to repo root)</label>
+        <input type="text" id="modal-scenario" placeholder="loadgen/scenarios/gradual-ramp.yaml" />
+      </div>
+      <div class="field-group">
+        <label>Tags (comma-separated)</label>
+        <input type="text" id="modal-tags" placeholder="thesis-eval, hybrid" />
+      </div>
+      <div class="field-group">
+        <label>Concurrency (0 = use default)</label>
+        <input type="number" id="modal-concurrency" value="0" min="0" />
+      </div>
+      <div class="field-group">
+        <label>Scale Factor (0 = auto-detect from DB)</label>
+        <input type="number" id="modal-scale-factor" value="0" min="0" />
+      </div>
+      <div class="field-group">
+        <label>Worker Node (empty = use default)</label>
+        <input type="text" id="modal-worker-node" />
+      </div>
+    </div>
+    <p class="error-msg" id="modal-error"></p>
+    <div class="modal-actions">
+      <button class="ctrl-btn btn-cancel" id="modal-cancel">Cancel</button>
+      <button class="ctrl-btn btn-add" id="modal-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
