@@ -1,23 +1,50 @@
 name: gradual_ramp
 steps:
-  - duration: 30s
-    rps: 100
+  # warmup — stable baseline, 1 replica
+  - duration: 90s
+    rps: 50
 
+  # slow ramp through boundary 1 (400 TPS → scale to 2)
   - duration: 180s
-    rps: 150
-    end_rps: 600
+    rps: 50
+    end_rps: 500
 
-  - duration: 240s
-    rps: 750
-    end_rps: 2200 
+  # hold in 2-replica zone
+  - duration: 60s
+    rps: 500
 
+  # ramp through boundary 2 (800 TPS → scale to 3)
   - duration: 120s
-    rps: 2200
+    rps: 500
+    end_rps: 900
 
+  # hold in 3-replica zone
+  - duration: 60s
+    rps: 900
+
+  # ramp through boundary 3 (1200 TPS → scale to 4)
+  - duration: 120s
+    rps: 900
+    end_rps: 1300
+
+  # hold in 4-replica zone
+  - duration: 60s
+    rps: 1300
+
+  # ramp to peak, cross boundary 4 (1600 TPS → scale to 5)
+  - duration: 90s
+    rps: 1300
+    end_rps: 1800
+
+  # hold at peak — let system stabilize
+  - duration: 120s
+    rps: 1800
+
+  # ramp down
   - duration: 150s
-    rps: 2200
-    end_rps: 850
-  
-  - duration: 150s
-    rps: 850
-    end_rps: 100
+    rps: 1800
+    end_rps: 200
+
+  # cooldown
+  - duration: 90s
+    rps: 50
