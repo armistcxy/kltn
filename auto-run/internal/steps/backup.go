@@ -22,14 +22,15 @@ const (
 func TakeBackup(ctx context.Context, rc *RunContext) error {
 	const stepName = "take-backup"
 
-	backupName := fmt.Sprintf("bench-%s", rc.RunSpec.ID)
+	// Include the session ID in the name so re-running the same scenario never
+	// collides with a VolumeSnapshot left by a previous session. Without a unique
+	// suffix, CNPG's reconciler finds the old snapshot and skips pg_backup_start,
+	// then fails in finalize because no backup session is active.
+	backupName := fmt.Sprintf("bench-%s-%s", rc.RunSpec.ID, rc.SessionID)
 	logStep(rc.Log, stepName, fmt.Sprintf("creating backup %q", backupName))
 
-	// CNPG tracks the currently executing backup in cluster status. If a previous
-	// backup was deleted while still in a non-terminal state, the cluster status
-	// gets a stale reference with an empty name. Creating a new backup then fails
-	// with "trying to stop backup with name: , while reconciling backup with name: X".
-	// Drain all non-terminal backups first and wait for cluster state to clear.
+	// Drain non-terminal Backup CRDs so CNPG's internal backup tracking is clear
+	// before we create the new Backup object.
 	if err := drainRunningBackups(ctx, rc, stepName); err != nil {
 		return fmt.Errorf("drain running backups: %w", err)
 	}
@@ -105,6 +106,7 @@ func drainRunningBackups(ctx context.Context, rc *RunContext, stepName string) e
 	}
 	return fmt.Errorf("timeout waiting for non-terminal backups to drain")
 }
+
 
 func waitForBackup(ctx context.Context, rc *RunContext, stepName, backupName string) error {
 	deadline := time.Now().Add(backupTimeout)
