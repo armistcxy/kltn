@@ -1,41 +1,23 @@
 minInstances: 1
 maxInstances: 5
-
-pollInterval: 30s
-cooldown: 30s            
+pollInterval: 15s
+cooldown: 30s
 scaleDownStabilizationWindow: 75s
-
 aggregation: max
-
 scalingMode: reactive
 
 metrics:
   - name: backends
-    query: 'sum(cnpg_backends_total{namespace="default", pod=~"pg-cluster-.*", state="active", usename="app"}) OR vector(0)'
-    scaleUpThreshold: 70
-    scaleDownThreshold: 20
-    targetValuePerReplica: 20     
-    weight: 3.0
-    scaleDownGuard: true         
+    query: 'avg_over_time(sum(cnpg_backends_total{namespace="default", pod=~"pg-cluster-.*", state="active", usename="app"})[2m:15s])'
+    scaleDownThreshold: 8
+    targetValuePerReplica: 15
+    scaleDownGuard: true
 
   - name: avg_latency
     query: |
-      max(
-        sum by (query_snippet) (rate(cnpg_pg_stat_statements_total_exec_time_seconds{namespace="default", pod=~"pg-cluster-.*"}[3m]))
-        /
-        sum by (query_snippet) (rate(cnpg_pg_stat_statements_calls{namespace="default", pod=~"pg-cluster-.*"}[3m]))
-      )
-    scaleUpThreshold: 0.1
+      sum(rate(cnpg_pg_stat_statements_total_exec_time_seconds{namespace="default", pod=~"pg-cluster-.*"}[3m]))
+      /
+      sum(rate(cnpg_pg_stat_statements_calls{namespace="default", pod=~"pg-cluster-.*"}[3m]))
+    scaleUpThreshold: 0.15
     scaleDownThreshold: 0.02
-    targetValuePerReplica: 0
-    weight: 2.0
-
-prediction:
-  enabled: false
-  type: ewma
-  metricName: avg_latency
-  horizon: 3m
-  minHistoryDuration: 3m
-  ewma:
-    alpha: 0.5
-    trendWindow: 4
+    scaleDownGuard: true
