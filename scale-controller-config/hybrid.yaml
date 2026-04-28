@@ -35,7 +35,9 @@ prediction:
   type: holtwinters
   metricName: tps
   horizon: 2m
-  minHistoryDuration: 5m
+  minHistoryDuration: 21m
   holtwinters:
     alpha: 0.4
     beta: 0.3
+    gamma: 0.2
+    seasonLength: 40   # 600s cycle / 15s pollInterval
