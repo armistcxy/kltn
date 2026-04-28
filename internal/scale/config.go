@@ -52,8 +52,10 @@ type linRegConfigFile struct {
 }
 
 type holtWintersFile struct {
-	Alpha float64 `yaml:"alpha"`
-	Beta  float64 `yaml:"beta"`
+	Alpha        float64 `yaml:"alpha"`
+	Beta         float64 `yaml:"beta"`
+	Gamma        float64 `yaml:"gamma"`
+	SeasonLength int     `yaml:"seasonLength"`
 }
 
 // LoadConfig reads and parses a YAML config file into Config.
@@ -147,8 +149,10 @@ func convertConfig(raw configFile) (Config, error) {
 		}
 		if raw.Prediction.HoltWinters != nil {
 			p.HoltWinters = &HoltWintersConfig{
-				Alpha: raw.Prediction.HoltWinters.Alpha,
-				Beta:  raw.Prediction.HoltWinters.Beta,
+				Alpha:        raw.Prediction.HoltWinters.Alpha,
+				Beta:         raw.Prediction.HoltWinters.Beta,
+				Gamma:        raw.Prediction.HoltWinters.Gamma,
+				SeasonLength: raw.Prediction.HoltWinters.SeasonLength,
 			}
 		}
 		cfg.Prediction = p
