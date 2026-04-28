@@ -202,7 +202,7 @@ func (c *ScaleController) Decide(ctx context.Context, cfg Config, snapshot *Metr
 	// then apply the scale-down stabilization window. The stabilized target is
 	// the max reactive target seen over the window — a transient dip (e.g.
 	// backends 76→4→71 within 60 s) will not lower the floor until the window expires.
-	rawReactive := c.computeReactiveTarget(cfg, snapshot, current)
+	rawReactive, triggerMetric := c.computeReactiveTarget(cfg, snapshot, current)
 	reactiveTarget := c.stabilizedReactiveTarget(rawReactive, cfg.ScaleDownStabilizationWindow)
 	if reactiveTarget != rawReactive {
 		slog.Info("scale-down stabilization active",
@@ -272,14 +272,14 @@ func (c *ScaleController) Decide(ctx context.Context, cfg Config, snapshot *Metr
 	case target > current:
 		decision.Action = ScaleUp
 		decision.Reason = fmt.Sprintf(
-			"scale up %d → %d (reactive=%d, predictive=%d)",
-			current, target, reactiveTarget, predictiveTarget,
+			"scale up %d → %d (trigger=%s, reactive=%d, predictive=%d)",
+			current, target, triggerMetric, reactiveTarget, predictiveTarget,
 		)
 	case target < current:
 		decision.Action = ScaleDown
 		decision.Reason = fmt.Sprintf(
-			"scale down %d → %d (reactive=%d, predictive=%d)",
-			current, target, reactiveTarget, predictiveTarget,
+			"scale down %d → %d (trigger=%s, reactive=%d, predictive=%d)",
+			current, target, triggerMetric, reactiveTarget, predictiveTarget,
 		)
 	default:
 		decision.Action = ScaleNone
@@ -341,13 +341,22 @@ func (c *ScaleController) stabilizedReactiveTarget(reactiveTarget int, window ti
 // computeReactiveTarget calculates desired replicas from the current snapshot.
 // Each metric independently produces a desired count; the aggregation strategy
 // (max or weighted_average) combines them into a single number.
-func (c *ScaleController) computeReactiveTarget(cfg Config, snapshot *MetricsSnapshot, current int) int {
+// Returns the target replica count and the name of the metric that drove it.
+func (c *ScaleController) computeReactiveTarget(cfg Config, snapshot *MetricsSnapshot, current int) (int, string) {
 	if len(cfg.Metrics) == 0 {
-		return current
+		return current, ""
+	}
+
+	type metricDesire struct {
+		name    string
+		value   float64
+		desired int
+		reason  string
 	}
 
 	desires := make([]float64, 0, len(cfg.Metrics))
 	weights := make([]float64, 0, len(cfg.Metrics))
+	entries := make([]metricDesire, 0, len(cfg.Metrics))
 
 	for _, spec := range cfg.Metrics {
 		value, ok := snapshot.Values[spec.Name]
@@ -356,42 +365,62 @@ func (c *ScaleController) computeReactiveTarget(cfg Config, snapshot *MetricsSna
 			continue
 		}
 
-		desired := desiredReplicasForMetric(spec, value, current)
+		desired, reason := desiredReplicasForMetric(spec, value, current)
 		w := spec.Weight
 		if w <= 0 {
 			w = 1.0
 		}
 		desires = append(desires, float64(desired))
 		weights = append(weights, w)
+		entries = append(entries, metricDesire{name: spec.Name, value: value, desired: desired, reason: reason})
+		slog.Info("metric evaluated",
+			"metric", spec.Name,
+			"value", value,
+			"desiredReplicas", desired,
+			"reason", reason,
+		)
 	}
 
 	if len(desires) == 0 {
-		return current
+		return current, ""
 	}
 
+	var target int
 	switch cfg.Aggregation {
 	case AggregationWeightedAverage:
-		return int(math.Ceil(weightedAverage(desires, weights)))
+		target = int(math.Ceil(weightedAverage(desires, weights)))
 	default: // AggregationMax
-		return int(maxSlice(desires))
+		target = int(maxSlice(desires))
 	}
+
+	// Find the metric that drove the final target.
+	trigger := ""
+	for _, e := range entries {
+		if e.desired == target {
+			trigger = e.name
+			break
+		}
+	}
+	return target, trigger
 }
 
 // desiredReplicasForMetric maps a single metric value to a desired replica count.
+// Returns the desired count and a human-readable reason string.
 //
 // If TargetValuePerReplica > 0:  desired = ceil(value / TargetValuePerReplica)
 // Otherwise: threshold-based ±1 step from current.
-func desiredReplicasForMetric(spec MetricSpec, value float64, current int) int {
+func desiredReplicasForMetric(spec MetricSpec, value float64, current int) (int, string) {
 	if spec.TargetValuePerReplica > 0 {
-		return int(math.Ceil(value / spec.TargetValuePerReplica))
+		desired := int(math.Ceil(value / spec.TargetValuePerReplica))
+		return desired, fmt.Sprintf("ratio: %.2f / %.2f per replica = %d", value, spec.TargetValuePerReplica, desired)
 	}
 	if value >= spec.ScaleUpThreshold {
-		return current + 1
+		return current + 1, fmt.Sprintf("value %.4f >= scaleUpThreshold %.4f", value, spec.ScaleUpThreshold)
 	}
 	if value <= spec.ScaleDownThreshold {
-		return current - 1
+		return current - 1, fmt.Sprintf("value %.4f <= scaleDownThreshold %.4f", value, spec.ScaleDownThreshold)
 	}
-	return current
+	return current, fmt.Sprintf("value %.4f within thresholds [%.4f, %.4f]", value, spec.ScaleDownThreshold, spec.ScaleUpThreshold)
 }
 
 // computePredictiveTarget uses the injected Predictor to forecast the primary
@@ -439,7 +468,8 @@ func (c *ScaleController) computePredictiveTarget(
 	// Map the predicted value → desired replicas using the same spec as reactive.
 	for _, spec := range cfg.Metrics {
 		if spec.Name == pred.MetricName {
-			return desiredReplicasForMetric(spec, predicted, current), nil
+			desired, _ := desiredReplicasForMetric(spec, predicted, current)
+			return desired, nil
 		}
 	}
 
