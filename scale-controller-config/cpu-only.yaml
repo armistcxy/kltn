@@ -14,4 +14,4 @@ metrics:
         pod=~"pg-cluster-.*",
         container="postgres"
       }[3m]))
-    targetValuePerReplica: 1.75
+    targetValuePerReplica: 1.7

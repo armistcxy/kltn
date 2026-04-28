@@ -20,4 +20,5 @@ metrics:
       sum(rate(cnpg_pg_stat_statements_calls{namespace="default", pod=~"pg-cluster-.*"}[3m]))
     scaleUpThreshold: 0.15
     scaleDownThreshold: 0.02
+    scaleUpOnly: true
     scaleDownGuard: true

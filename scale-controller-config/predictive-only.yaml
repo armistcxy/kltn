@@ -20,6 +20,7 @@ metrics:
       sum(rate(cnpg_pg_stat_statements_calls{namespace="default", pod=~"pg-cluster-.*"}[3m]))
     scaleUpThreshold: 0.15
     scaleDownThreshold: 0.02
+    scaleUpOnly: true
     scaleDownGuard: true
   
   - name: tps
@@ -31,10 +32,10 @@ metrics:
 
 prediction:
   enabled: true
-  type: ewma
+  type: holtwinters
   metricName: tps
   horizon: 2m
   minHistoryDuration: 5m
-  ewma:
-    alpha: 0.5
-    trendWindow: 3
+  holtwinters:
+    alpha: 0.4
+    beta: 0.3
