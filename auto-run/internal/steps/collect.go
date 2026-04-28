@@ -19,6 +19,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// collectStepSeconds is the Prometheus query_range step used when collecting metrics.
+const collectStepSeconds = 15
+
 // metricQuery pairs a CSV filename with a PromQL expression.
 type metricQuery struct {
 	Filename string
@@ -178,6 +181,47 @@ type promRangeResponse struct {
 			Values [][]any `json:"values"`
 		} `json:"result"`
 	} `json:"data"`
+}
+
+// ComputeReplicaSeconds reads replicas.csv from resultsDir and returns
+// the total replica-seconds: sum(replicas_i) * collectStepSeconds.
+// Returns 0 without error if the file doesn't exist yet (best-effort).
+func ComputeReplicaSeconds(resultsDir string) (float64, error) {
+	path := filepath.Join(resultsDir, "replicas.csv")
+	f, err := os.Open(path)
+	if os.IsNotExist(err) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("open replicas.csv: %w", err)
+	}
+	defer f.Close()
+
+	r := csv.NewReader(f)
+	// skip header
+	if _, err := r.Read(); err != nil {
+		return 0, fmt.Errorf("read replicas.csv header: %w", err)
+	}
+
+	var sum float64
+	for {
+		record, err := r.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return 0, fmt.Errorf("read replicas.csv: %w", err)
+		}
+		if len(record) < 2 {
+			continue
+		}
+		v, err := strconv.ParseFloat(record[1], 64)
+		if err != nil {
+			continue
+		}
+		sum += v
+	}
+	return sum * collectStepSeconds, nil
 }
 
 func collectControllerLogsToFile(ctx context.Context, rc *RunContext, clientset kubernetes.Interface, stepName string) error {

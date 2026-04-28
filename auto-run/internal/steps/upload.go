@@ -27,8 +27,9 @@ type Meta struct {
 	Status         string `json:"status"`
 	Concurrency    int    `json:"loadgen_concurrency"`
 	WorkerNode     string `json:"worker_node"`
-	DBURL          string `json:"db_url"` // password redacted
-	GCSPath        string `json:"gcs_path"`
+	DBURL          string  `json:"db_url"` // password redacted
+	GCSPath        string  `json:"gcs_path"`
+	ReplicaSeconds float64 `json:"replica_seconds"`
 }
 
 // WriteMeta serialises meta to <resultsDir>/meta.json.

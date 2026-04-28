@@ -207,6 +207,7 @@ func (o *Orchestrator) executeRun(runID string) error {
 
 	var startTS, endTS time.Time
 	var runErr error
+	var replicaSeconds float64
 
 	// 1. Reset cluster
 	if runErr = runStep("reset-cluster", func() error {
@@ -234,7 +235,16 @@ func (o *Orchestrator) executeRun(runID string) error {
 
 	// 4. Collect metrics
 	_ = runStep("collect-metrics", func() error {
-		return steps.CollectMetrics(ctx, rc, o.clientset, startTS, endTS)
+		if err := steps.CollectMetrics(ctx, rc, o.clientset, startTS, endTS); err != nil {
+			return err
+		}
+		rs, err := steps.ComputeReplicaSeconds(resultsDir)
+		if err != nil {
+			logFn(fmt.Sprintf("[collect-metrics] warn: replica_seconds: %v", err))
+		} else {
+			replicaSeconds = rs
+		}
+		return nil
 	})
 
 teardown:
@@ -249,17 +259,18 @@ teardown:
 	if defs.GCSBucket != "" {
 		_ = runStep("upload-gcs", func() error {
 			meta := steps.Meta{
-				RunID:       runID,
-				SessionID:   o.sessionID,
-				ConfigFile:  spec.Config,
-				ScenarioFile: spec.Scenario,
-				StartTS:     startTS.Unix(),
-				EndTS:       endTS.Unix(),
-				DurationS:   int64(endTS.Sub(startTS).Seconds()),
-				GitCommit:   gitCommit(o.repoRoot),
-				Concurrency: rc.EffectiveConcurrency(),
-				WorkerNode:  rc.EffectiveWorkerNode(),
-				DBURL:       redactPassword(defs.DBURL),
+				RunID:          runID,
+				SessionID:      o.sessionID,
+				ConfigFile:     spec.Config,
+				ScenarioFile:   spec.Scenario,
+				StartTS:        startTS.Unix(),
+				EndTS:          endTS.Unix(),
+				DurationS:      int64(endTS.Sub(startTS).Seconds()),
+				GitCommit:      gitCommit(o.repoRoot),
+				Concurrency:    rc.EffectiveConcurrency(),
+				WorkerNode:     rc.EffectiveWorkerNode(),
+				DBURL:          redactPassword(defs.DBURL),
+				ReplicaSeconds: replicaSeconds,
 			}
 			if runErr != nil {
 				meta.Status = "FAILED"

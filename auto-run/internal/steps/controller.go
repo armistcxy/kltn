@@ -10,6 +10,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -52,6 +54,14 @@ func DeployController(ctx context.Context, rc *RunContext) error {
 	deploy := buildControllerDeployment(deployName, cmName, rc)
 	if err := applyDeployment(ctx, rc.K8sClient, deploy); err != nil {
 		return fmt.Errorf("[%s] apply Deployment: %w", stepName, err)
+	}
+
+	// --- PodMonitor (so Prometheus scrapes controller metrics) ---
+	pm := buildControllerPodMonitor(rc.RunSpec.ID)
+	if err := rc.K8sClient.Create(ctx, pm); err != nil && !k8serrors.IsAlreadyExists(err) {
+		rc.Logf("[%s] warn: create PodMonitor: %v", stepName, err)
+	} else {
+		rc.Logf("[%s] PodMonitor %s created", stepName, pm.GetName())
 	}
 
 	// --- Wait for rollout ---
@@ -97,6 +107,11 @@ func TeardownController(ctx context.Context, rc *RunContext) {
 			rc.Logf("[%s] warn: delete configmap: %v", stepName, err)
 		}
 	}
+	pm := buildControllerPodMonitor(rc.RunSpec.ID)
+	if err := rc.K8sClient.Delete(ctx, pm); err != nil && !k8serrors.IsNotFound(err) {
+		rc.Logf("[%s] warn: delete PodMonitor: %v", stepName, err)
+	}
+
 	rc.Logf("[%s] controller resources deleted", stepName)
 }
 
@@ -190,6 +205,44 @@ func buildControllerDeployment(name, cmName string, rc *RunContext) *appsv1.Depl
 		}
 	}
 	return deploy
+}
+
+var podMonitorGVK = schema.GroupVersionKind{
+	Group:   "monitoring.coreos.com",
+	Version: "v1",
+	Kind:    "PodMonitor",
+}
+
+func buildControllerPodMonitor(runID string) *unstructured.Unstructured {
+	name := fmt.Sprintf("scale-controller-%s", runID)
+	u := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "monitoring.coreos.com/v1",
+			"kind":       "PodMonitor",
+			"metadata": map[string]interface{}{
+				"name":      name,
+				"namespace": controllerNamespace,
+				"labels": map[string]interface{}{
+					"release":         "prometheus",
+					"auto-run/run-id": runID,
+					"managed-by":      "auto-run",
+				},
+			},
+			"spec": map[string]interface{}{
+				"selector": map[string]interface{}{
+					"matchLabels": map[string]interface{}{
+						"app":             name,
+						"auto-run/run-id": runID,
+					},
+				},
+				"podMetricsEndpoints": []interface{}{
+					map[string]interface{}{"port": "metrics"},
+				},
+			},
+		},
+	}
+	u.SetGroupVersionKind(podMonitorGVK)
+	return u
 }
 
 func runLabels(runID string) map[string]string {
