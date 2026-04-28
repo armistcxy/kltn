@@ -409,18 +409,29 @@ func (c *ScaleController) computeReactiveTarget(cfg Config, snapshot *MetricsSna
 //
 // If TargetValuePerReplica > 0:  desired = ceil(value / TargetValuePerReplica)
 // Otherwise: threshold-based ±1 step from current.
+// If ScaleUpOnly is set, the result is floored at current (never contributes to scale-down).
 func desiredReplicasForMetric(spec MetricSpec, value float64, current int) (int, string) {
+	var desired int
+	var reason string
+
 	if spec.TargetValuePerReplica > 0 {
-		desired := int(math.Ceil(value / spec.TargetValuePerReplica))
-		return desired, fmt.Sprintf("ratio: %.2f / %.2f per replica = %d", value, spec.TargetValuePerReplica, desired)
+		desired = int(math.Ceil(value / spec.TargetValuePerReplica))
+		reason = fmt.Sprintf("ratio: %.2f / %.2f per replica = %d", value, spec.TargetValuePerReplica, desired)
+	} else if value >= spec.ScaleUpThreshold {
+		desired = current + 1
+		reason = fmt.Sprintf("value %.4f >= scaleUpThreshold %.4f", value, spec.ScaleUpThreshold)
+	} else if value <= spec.ScaleDownThreshold {
+		desired = current - 1
+		reason = fmt.Sprintf("value %.4f <= scaleDownThreshold %.4f", value, spec.ScaleDownThreshold)
+	} else {
+		desired = current
+		reason = fmt.Sprintf("value %.4f within thresholds [%.4f, %.4f]", value, spec.ScaleDownThreshold, spec.ScaleUpThreshold)
 	}
-	if value >= spec.ScaleUpThreshold {
-		return current + 1, fmt.Sprintf("value %.4f >= scaleUpThreshold %.4f", value, spec.ScaleUpThreshold)
+
+	if spec.ScaleUpOnly && desired < current {
+		return current, reason + " (scale-up only: floored at current)"
 	}
-	if value <= spec.ScaleDownThreshold {
-		return current - 1, fmt.Sprintf("value %.4f <= scaleDownThreshold %.4f", value, spec.ScaleDownThreshold)
-	}
-	return current, fmt.Sprintf("value %.4f within thresholds [%.4f, %.4f]", value, spec.ScaleDownThreshold, spec.ScaleUpThreshold)
+	return desired, reason
 }
 
 // computePredictiveTarget uses the injected Predictor to forecast the primary

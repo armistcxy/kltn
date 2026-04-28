@@ -40,6 +40,11 @@ type MetricSpec struct {
 	// is still above ScaleDownThreshold. Use for point-in-time gauges (e.g. backends)
 	// that are more reliable than rate-based metrics during transient polling gaps.
 	ScaleDownGuard bool `yaml:"scaleDownGuard" json:"scaleDownGuard"`
+
+	// ScaleUpOnly: when true, this metric can only push the replica count up,
+	// never contribute to a scale-down. Desired replicas are floored at current.
+	// Useful for latency metrics that are noisy or unreliable at low load.
+	ScaleUpOnly bool `yaml:"scaleUpOnly" json:"scaleUpOnly"`
 }
 
 // Config is the full runtime configuration of the ScaleController.
