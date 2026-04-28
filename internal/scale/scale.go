@@ -366,6 +366,14 @@ func (c *ScaleController) computeReactiveTarget(cfg Config, snapshot *MetricsSna
 		}
 
 		desired, reason := desiredReplicasForMetric(spec, value, current)
+
+		// scaleUpOnly metrics must not participate in scale-down aggregation.
+		// When floored at current, they would always win the max() and block scale-down.
+		if spec.ScaleUpOnly && desired >= current {
+			slog.Info("scaleUpOnly metric skipped (no scale-up signal)", "metric", spec.Name, "value", value)
+			continue
+		}
+
 		w := spec.Weight
 		if w <= 0 {
 			w = 1.0
