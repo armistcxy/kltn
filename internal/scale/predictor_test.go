@@ -133,8 +133,18 @@ func TestLinRegPredictor_NegativeForecastFlooredAtZero(t *testing.T) {
 
 // --- HoltWinters ---
 
+// newHW is a test helper that panics on construction error.
+func newHW(alpha, beta, gamma float64, seasonLength int) *HoltWintersPredictor {
+	p, err := NewHoltWintersPredictor(alpha, beta, gamma, seasonLength)
+	if err != nil {
+		panic(err)
+	}
+	return p
+}
+
 func TestHoltWintersPredictor_FlatSeries(t *testing.T) {
-	p := NewHoltWintersPredictor(0.3, 0.1)
+	// seasonLength > history → triggers linear fallback; result should still be ~50.
+	p := newHW(0.3, 0.1, 0.2, 100)
 	history := makeHistory([]float64{50, 50, 50, 50, 50, 50, 50, 50, 50, 50}, 30*time.Second)
 	got, err := p.Predict(context.Background(), history, 5*time.Minute)
 	if err != nil {
@@ -146,7 +156,8 @@ func TestHoltWintersPredictor_FlatSeries(t *testing.T) {
 }
 
 func TestHoltWintersPredictor_RisingSeries(t *testing.T) {
-	p := NewHoltWintersPredictor(0.4, 0.3)
+	// seasonLength > history → linear fallback; rising trend → forecast > 100.
+	p := newHW(0.4, 0.3, 0.2, 100)
 	history := makeHistory([]float64{10, 20, 30, 40, 50, 60, 70, 80, 90, 100}, 30*time.Second)
 	got, err := p.Predict(context.Background(), history, 30*time.Second)
 	if err != nil {
@@ -158,7 +169,7 @@ func TestHoltWintersPredictor_RisingSeries(t *testing.T) {
 }
 
 func TestHoltWintersPredictor_EmptyHistory(t *testing.T) {
-	p := NewHoltWintersPredictor(0.3, 0.1)
+	p := newHW(0.3, 0.1, 0.2, 4)
 	got, err := p.Predict(context.Background(), nil, 5*time.Minute)
 	if err != nil {
 		t.Fatal(err)
@@ -169,7 +180,8 @@ func TestHoltWintersPredictor_EmptyHistory(t *testing.T) {
 }
 
 func TestHoltWintersPredictor_NegativeForecastFlooredAtZero(t *testing.T) {
-	p := NewHoltWintersPredictor(0.5, 0.3)
+	// seasonLength > history → linear fallback; sharply falling → floor at 0.
+	p := newHW(0.5, 0.3, 0.2, 100)
 	history := makeHistory([]float64{100, 80, 60, 40, 20, 10, 5, 2, 1, 0}, 30*time.Second)
 	got, err := p.Predict(context.Background(), history, 5*time.Minute)
 	if err != nil {
@@ -177,6 +189,60 @@ func TestHoltWintersPredictor_NegativeForecastFlooredAtZero(t *testing.T) {
 	}
 	if got < 0 {
 		t.Errorf("forecast must not be negative, got %.2f", got)
+	}
+}
+
+func TestHoltWintersPredictor_SeasonalPattern(t *testing.T) {
+	// Two full seasons of a repeating low-high pattern: [10, 90, 10, 90, ...].
+	// seasonLength=2. After 2 seasons the predictor should recognise that
+	// position 0 → low (~10) and position 1 → high (~90).
+	// With history length 4 (exactly 2 seasons) and h=1 step ahead:
+	// last point is at season position 1 (high), so next (position 0) should be ~10.
+	p := newHW(0.5, 0.1, 0.5, 2)
+	history := makeHistory([]float64{10, 90, 10, 90}, 30*time.Second)
+	got, err := p.Predict(context.Background(), history, 30*time.Second) // h=1 step
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Forecast for position 0 (low phase) should be well below 90.
+	if got >= 90 {
+		t.Errorf("expected forecast < 90 for low phase of seasonal pattern, got %.2f", got)
+	}
+}
+
+func TestHoltWintersPredictor_SeasonalPeakAnticipation(t *testing.T) {
+	// Simulate end-of-low-phase: history ends at the bottom of cycle 2.
+	// Pattern: high(4pts) + low(4pts) repeated twice → seasonLength=8.
+	// After 2 full seasons ending at a low point, forecasting 4 steps ahead
+	// (into the high phase) should return a value clearly above the low.
+	high := 400.0
+	low := 50.0
+	season := []float64{high, high, high, high, low, low, low, low}
+	values := append(season, season...) // 2 full seasons = 16 points
+	p := newHW(0.4, 0.2, 0.3, 8)
+	history := makeHistory(values, 15*time.Second)
+	// h = 4 steps ahead (into the high phase of cycle 3)
+	got, err := p.Predict(context.Background(), history, 4*15*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got < low+50 {
+		t.Errorf("expected forecast well above low (%.0f) for upcoming peak, got %.2f", low, got)
+	}
+}
+
+func TestHoltWintersPredictor_InvalidParams(t *testing.T) {
+	if _, err := NewHoltWintersPredictor(0, 0.3, 0.2, 4); err == nil {
+		t.Error("expected error for alpha=0")
+	}
+	if _, err := NewHoltWintersPredictor(0.4, 1.5, 0.2, 4); err == nil {
+		t.Error("expected error for beta=1.5")
+	}
+	if _, err := NewHoltWintersPredictor(0.4, 0.3, 0, 4); err == nil {
+		t.Error("expected error for gamma=0")
+	}
+	if _, err := NewHoltWintersPredictor(0.4, 0.3, 0.2, 1); err == nil {
+		t.Error("expected error for seasonLength=1")
 	}
 }
 
@@ -212,7 +278,7 @@ func TestBuildPredictor_HoltWinters(t *testing.T) {
 	cfg := &PredictionConfig{
 		Enabled:     true,
 		Type:        PredictorHoltWinters,
-		HoltWinters: &HoltWintersConfig{Alpha: 0.3, Beta: 0.1},
+		HoltWinters: &HoltWintersConfig{Alpha: 0.3, Beta: 0.1, Gamma: 0.2, SeasonLength: 40},
 	}
 	p, err := BuildPredictor(cfg)
 	if err != nil {

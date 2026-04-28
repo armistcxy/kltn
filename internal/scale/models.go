@@ -145,13 +145,23 @@ type LinRegConfig struct {
 	Window int `yaml:"window"`
 }
 
-// HoltWintersConfig configures Holt's linear (double exponential smoothing) predictor.
+// HoltWintersConfig configures the Holt-Winters triple exponential smoothing predictor.
 type HoltWintersConfig struct {
 	// Alpha is the level smoothing factor (0 < alpha ≤ 1).
 	Alpha float64 `yaml:"alpha"`
 
 	// Beta is the trend smoothing factor (0 < beta ≤ 1).
 	Beta float64 `yaml:"beta"`
+
+	// Gamma is the seasonal smoothing factor (0 < gamma ≤ 1).
+	// Higher values make seasonal indices adapt faster to recent cycles.
+	Gamma float64 `yaml:"gamma"`
+
+	// SeasonLength is the number of data points in one full workload cycle.
+	// Example: pollInterval=15s, cycle=600s → seasonLength=40.
+	// Must be >= 2. Requires at least 2*seasonLength history points before
+	// seasonal component activates; falls back to linear until then.
+	SeasonLength int `yaml:"seasonLength"`
 }
 
 // PredictionConfig enables predictive scaling layered on top of reactive scaling.
