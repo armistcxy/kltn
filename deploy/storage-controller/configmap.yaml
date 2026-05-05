@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: storage-controller-config
+  namespace: default
+data:
+  config.yaml: |
+    storageScaling:
+      enabled: true
+      pollInterval: 30s
+      namespace: default
+      cluster: pg-cluster
+
+      pgdata:
+        scaleUpThresholdPercent: 80
+        criticalThresholdPercent: 90
+        stepPercent: 50
+        maxSizeGi: 100
+        cooldownMinutes: 6
+        longTermDerivWindow: 5m
+        longTermQuantileWindow: 20m
+        longTermSampleInterval: 30s
+        shortTermDerivWindow: 3m
+        shortTermQuantileWindow: 10m
+        shortTermSampleInterval: 15s
+        preemptiveResizeIfFullInHours: 0.15 # Change to 0 if want to disable preemptive mode
+
+      wal:
+        enabled: false
+        scaleUpThresholdPercent: 70
+        criticalThresholdPercent: 85
+        stepPercent: 50
+        maxSizeGi: 50
+        cooldownMinutes: 10
+
+      safetyGuards:
+        blockIfWalArchivePending: 100
+        blockIfReplicationLagSeconds: 30

@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: storage-controller
+  namespace: default
+  labels:
+    app: storage-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: storage-controller
+  template:
+    metadata:
+      labels:
+        app: storage-controller
+    spec:
+      serviceAccountName: storage-controller
+      containers:
+        - name: storage-controller
+          image: zzzsleepzzz/storage-controller:latest
+          imagePullPolicy: Always
+          args:
+            - --config=/config/config.yaml
+            - --prometheus-addr=http://prometheus-operated.monitoring.svc.cluster.local:9090
+            - --log-file=/tmp/storage-controller.log
+          volumeMounts:
+            - name: config
+              mountPath: /config
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+      volumes:
+        - name: config
+          configMap:
+            name: storage-controller-config

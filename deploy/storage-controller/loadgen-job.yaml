@@ -1,0 +1,21 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: loadgen-data-fill
+  namespace: default
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      nodeName: gke-auto-scaling-lab-default-pool-ba812d2f-pflx
+      restartPolicy: Never
+      containers:
+        - name: loadgen
+          image: zzzsleepzzz/loadgen:v2.21
+          command:
+            - loadgen
+            - run
+            - --workload=data-fill
+            - --db-url=postgres://app:password@pg-cluster-rw
+            - --concurrency=50
+            - --scenario=scenarios/storage-bursty.yaml
