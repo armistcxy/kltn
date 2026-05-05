@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -14,6 +15,7 @@ import (
 	"github.com/armistcxy/kltn/pkg/storage"
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
 	"github.com/go-logr/logr"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/client-go/kubernetes/scheme"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
@@ -24,6 +26,7 @@ func main() {
 	configPath := flag.String("config", "config.storage-example.yaml", "Path to storage controller YAML config file")
 	prometheusAddr := flag.String("prometheus-addr", "http://localhost:9090", "Prometheus server address")
 	logFile := flag.String("log-file", "storage-controller.log", "Path to log file (written alongside stdout)")
+	metricsAddr := flag.String("metrics-addr", ":9092", "Address to expose Prometheus metrics (/metrics) and health (/healthz)")
 	flag.Parse()
 
 	// Structured logging — tee to stdout and a file.
@@ -79,6 +82,19 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// Start metrics + health HTTP server.
+	go func() {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.Handler())
+		mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+		slog.Info("metrics server started", "addr", *metricsAddr)
+		if err := http.ListenAndServe(*metricsAddr, mux); err != nil {
+			slog.Error("metrics server stopped", "err", err)
+		}
+	}()
 
 	slog.Info("starting storage controller",
 		"cluster", cfg.Cluster,

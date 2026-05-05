@@ -2,6 +2,16 @@ package storage
 
 import "time"
 
+// TriggerType classifies what caused a storage resize decision.
+type TriggerType string
+
+const (
+	TriggerTypeNone       TriggerType = "none"
+	TriggerTypeReactive   TriggerType = "reactive"
+	TriggerTypeCritical   TriggerType = "critical"
+	TriggerTypePreemptive TriggerType = "preemptive"
+)
+
 // StorageSnapshot is a point-in-time snapshot of disk-related metrics.
 type StorageSnapshot struct {
 	At time.Time
@@ -79,4 +89,7 @@ type StorageDecision struct {
 
 	// Reason is a human-readable explanation of the decision.
 	Reason string
+
+	// TriggerType classifies what caused this decision (reactive, critical, preemptive, or none).
+	TriggerType TriggerType
 }

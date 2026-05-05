@@ -71,17 +71,20 @@ func (d *Decider) DecidePGData(snap *StorageSnapshot, cfg PGDataConfig, guards S
 
 	switch {
 	case critical:
+		decision.TriggerType = TriggerTypeCritical
 		decision.Reason = fmt.Sprintf(
 			"critical: pgdata usage %.1f%% >= %.1f%% — resize %s → %s (bypassing cooldown)",
 			usage, cfg.CriticalThresholdPercent, snap.CurrentPGDataSize, newSize,
 		)
 	case preemptive:
+		decision.TriggerType = TriggerTypePreemptive
 		ttfHours := snap.PGDataTimeToFullSeconds / 3600
 		decision.Reason = fmt.Sprintf(
 			"preemptive: worst-case time-to-full %.1fh < threshold %.1fh (p95/p99 growth rate) — resize %s → %s",
 			ttfHours, cfg.PreemptiveResizeIfFullInHours, snap.CurrentPGDataSize, newSize,
 		)
 	default:
+		decision.TriggerType = TriggerTypeReactive
 		decision.Reason = fmt.Sprintf(
 			"pgdata usage %.1f%% >= %.1f%% — resize %s → %s",
 			usage, cfg.ScaleUpThresholdPercent, snap.CurrentPGDataSize, newSize,
@@ -153,11 +156,13 @@ func (d *Decider) DecideWAL(snap *StorageSnapshot, cfg WALConfig, guards SafetyG
 	decision.NewSize = newSize
 
 	if critical {
+		decision.TriggerType = TriggerTypeCritical
 		decision.Reason = fmt.Sprintf(
 			"critical: wal usage %.1f%% >= %.1f%% — resize %s → %s (bypassing cooldown)",
 			usagePct, cfg.CriticalThresholdPercent, snap.CurrentWALSize, newSize,
 		)
 	} else {
+		decision.TriggerType = TriggerTypeReactive
 		decision.Reason = fmt.Sprintf(
 			"wal usage %.1f%% >= %.1f%% — resize %s → %s",
 			usagePct, cfg.ScaleUpThresholdPercent, snap.CurrentWALSize, newSize,
