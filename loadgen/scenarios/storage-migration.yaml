@@ -1,0 +1,12 @@
+name: storage_migration
+steps:
+  - duration: 5m
+    rps: 100
+  - duration: 2m
+    rps: 200
+    end_rps: 400
+  - duration: 6m
+    rps: 600
+  - duration: 4m
+    rps: 500
+    end_rps: 30
