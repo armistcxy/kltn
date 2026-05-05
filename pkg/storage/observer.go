@@ -37,15 +37,14 @@ func (o *Observer) Observe(ctx context.Context, cfg Config) (*StorageSnapshot, e
 		err   error
 	}
 
-	// Consumption rate subexpression: rate at which available bytes decrease (bytes/sec, positive = filling).
-	// Negate deriv(available) so that positive values represent disk being consumed.
+	pc := cfg.PGData
 	consumptionLong := fmt.Sprintf(
-		`-deriv(kubelet_volume_stats_available_bytes{namespace="%s",persistentvolumeclaim=~"%s-[0-9]+"}[1h])`,
-		cfg.Namespace, cfg.Cluster,
+		`-deriv(kubelet_volume_stats_available_bytes{namespace="%s",persistentvolumeclaim=~"%s-[0-9]+"}[%s])`,
+		cfg.Namespace, cfg.Cluster, promDuration(pc.LongTermDerivWindow),
 	)
 	consumptionShort := fmt.Sprintf(
-		`-deriv(kubelet_volume_stats_available_bytes{namespace="%s",persistentvolumeclaim=~"%s-[0-9]+"}[5m])`,
-		cfg.Namespace, cfg.Cluster,
+		`-deriv(kubelet_volume_stats_available_bytes{namespace="%s",persistentvolumeclaim=~"%s-[0-9]+"}[%s])`,
+		cfg.Namespace, cfg.Cluster, promDuration(pc.ShortTermDerivWindow),
 	)
 
 	queries := map[string]string{
@@ -58,12 +57,11 @@ func (o *Observer) Observe(ctx context.Context, cfg Config) (*StorageSnapshot, e
 			cfg.Namespace, cfg.Cluster,
 		),
 		// Worst-case growth rate: max of p95 long-term trend and p99 short-term spike.
-		//   - p95 over 24 h sampled every 5 m captures sustained growth trends.
-		//   - p99 over 6 h sampled every 1 m captures acute spikes (batch jobs, WAL bursts).
-		// Taking the max of both means prepare for whichever scenario is worse.
+		// Windows are configurable so benchmarks can use shorter ranges.
 		"pgdata_worst_case_growth": fmt.Sprintf(
-			`max(quantile_over_time(0.95, (%s)[24h:5m]), quantile_over_time(0.99, (%s)[6h:1m]))`,
-			consumptionLong, consumptionShort,
+			`max(quantile_over_time(0.95, (%s)[%s:%s]) or quantile_over_time(0.99, (%s)[%s:%s]))`,
+			consumptionLong, promDuration(pc.LongTermQuantileWindow), promDuration(pc.LongTermSampleInterval),
+			consumptionShort, promDuration(pc.ShortTermQuantileWindow), promDuration(pc.ShortTermSampleInterval),
 		),
 		"wal_usage_ratio": fmt.Sprintf(
 			`max(cnpg_collector_pg_wal{value="size",namespace="%s"}) / max(cnpg_collector_pg_wal{value="volume_size",namespace="%s"})`,
@@ -160,4 +158,14 @@ func (o *Observer) currentSizes(ctx context.Context, namespace, cluster string) 
 		walSize = cl.Spec.WalStorage.Size
 	}
 	return pgDataSize, walSize, nil
+}
+
+// promDuration formats a time.Duration into a Prometheus duration string (e.g. 1h30m → "90m").
+// Prometheus accepts only integer units, so we round to seconds and express as "<N>s".
+func promDuration(d time.Duration) string {
+	secs := int64(d.Seconds())
+	if secs <= 0 {
+		secs = 1
+	}
+	return fmt.Sprintf("%ds", secs)
 }

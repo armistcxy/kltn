@@ -41,6 +41,23 @@ type PGDataConfig struct {
 	// time-to-full (based on p95/p99 historical growth rate) falls below this many hours.
 	// 0 disables preemptive resizing.
 	PreemptiveResizeIfFullInHours float64
+
+	// Growth rate estimation windows. Defaults are sized for production (days of history).
+	// Shorten for benchmarks or fast-filling environments.
+
+	// LongTermDerivWindow is the range used in deriv() to estimate hourly consumption rate (default: 1h).
+	LongTermDerivWindow time.Duration
+	// LongTermQuantileWindow is the lookback range for the p95 quantile_over_time (default: 24h).
+	LongTermQuantileWindow time.Duration
+	// LongTermSampleInterval is the subquery step for the long-term quantile (default: 5m).
+	LongTermSampleInterval time.Duration
+
+	// ShortTermDerivWindow is the range used in deriv() to estimate short-term spike rate (default: 5m).
+	ShortTermDerivWindow time.Duration
+	// ShortTermQuantileWindow is the lookback range for the p99 quantile_over_time (default: 6h).
+	ShortTermQuantileWindow time.Duration
+	// ShortTermSampleInterval is the subquery step for the short-term quantile (default: 1m).
+	ShortTermSampleInterval time.Duration
 }
 
 // WALConfig configures autoscaling for the WAL volume (spec.walStorage).
@@ -87,8 +104,8 @@ type storageScalingFile struct {
 	PollInterval string            `yaml:"pollInterval"`
 	Namespace    string            `yaml:"namespace"`
 	Cluster      string            `yaml:"cluster"`
-	PGData       pgDataConfigFile  `yaml:"pgdataStorage"`
-	WAL          walConfigFile     `yaml:"walStorage"`
+	PGData       pgDataConfigFile  `yaml:"pgdata"`
+	WAL          walConfigFile     `yaml:"wal"`
 	SafetyGuards safetyGuardsFile  `yaml:"safetyGuards"`
 }
 
@@ -99,6 +116,13 @@ type pgDataConfigFile struct {
 	MaxSizeGi                     int     `yaml:"maxSizeGi"`
 	CooldownMinutes               int     `yaml:"cooldownMinutes"`
 	PreemptiveResizeIfFullInHours float64 `yaml:"preemptiveResizeIfFullInHours"`
+
+	LongTermDerivWindow     string `yaml:"longTermDerivWindow"`
+	LongTermQuantileWindow  string `yaml:"longTermQuantileWindow"`
+	LongTermSampleInterval  string `yaml:"longTermSampleInterval"`
+	ShortTermDerivWindow    string `yaml:"shortTermDerivWindow"`
+	ShortTermQuantileWindow string `yaml:"shortTermQuantileWindow"`
+	ShortTermSampleInterval string `yaml:"shortTermSampleInterval"`
 }
 
 type walConfigFile struct {
@@ -131,6 +155,17 @@ func LoadConfig(path string) (Config, error) {
 	return convertConfig(raw.StorageScaling)
 }
 
+func parseDurationDefault(s string, def time.Duration) (time.Duration, error) {
+	if s == "" {
+		return def, nil
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, err
+	}
+	return d, nil
+}
+
 func convertConfig(raw storageScalingFile) (Config, error) {
 	pollInterval := 60 * time.Second
 	if raw.PollInterval != "" {
@@ -138,6 +173,31 @@ func convertConfig(raw storageScalingFile) (Config, error) {
 		if pollInterval, err = time.ParseDuration(raw.PollInterval); err != nil {
 			return Config{}, fmt.Errorf("pollInterval %q: %w", raw.PollInterval, err)
 		}
+	}
+
+	ltDerivWindow, err := parseDurationDefault(raw.PGData.LongTermDerivWindow, time.Hour)
+	if err != nil {
+		return Config{}, fmt.Errorf("longTermDerivWindow: %w", err)
+	}
+	ltQuantileWindow, err := parseDurationDefault(raw.PGData.LongTermQuantileWindow, 24*time.Hour)
+	if err != nil {
+		return Config{}, fmt.Errorf("longTermQuantileWindow: %w", err)
+	}
+	ltSampleInterval, err := parseDurationDefault(raw.PGData.LongTermSampleInterval, 5*time.Minute)
+	if err != nil {
+		return Config{}, fmt.Errorf("longTermSampleInterval: %w", err)
+	}
+	stDerivWindow, err := parseDurationDefault(raw.PGData.ShortTermDerivWindow, 5*time.Minute)
+	if err != nil {
+		return Config{}, fmt.Errorf("shortTermDerivWindow: %w", err)
+	}
+	stQuantileWindow, err := parseDurationDefault(raw.PGData.ShortTermQuantileWindow, 6*time.Hour)
+	if err != nil {
+		return Config{}, fmt.Errorf("shortTermQuantileWindow: %w", err)
+	}
+	stSampleInterval, err := parseDurationDefault(raw.PGData.ShortTermSampleInterval, time.Minute)
+	if err != nil {
+		return Config{}, fmt.Errorf("shortTermSampleInterval: %w", err)
 	}
 
 	cfg := Config{
@@ -152,6 +212,12 @@ func convertConfig(raw storageScalingFile) (Config, error) {
 			MaxSizeGi:                     raw.PGData.MaxSizeGi,
 			Cooldown:                      time.Duration(raw.PGData.CooldownMinutes) * time.Minute,
 			PreemptiveResizeIfFullInHours: raw.PGData.PreemptiveResizeIfFullInHours,
+			LongTermDerivWindow:           ltDerivWindow,
+			LongTermQuantileWindow:        ltQuantileWindow,
+			LongTermSampleInterval:        ltSampleInterval,
+			ShortTermDerivWindow:          stDerivWindow,
+			ShortTermQuantileWindow:       stQuantileWindow,
+			ShortTermSampleInterval:       stSampleInterval,
 		},
 		WAL: WALConfig{
 			Enabled:                  raw.WAL.Enabled,
