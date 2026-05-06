@@ -10,6 +10,7 @@ import (
 
 	prometheusquery "github.com/armistcxy/kltn/pkg/prometheus-query"
 	cnpgv1 "github.com/cloudnative-pg/cloudnative-pg/api/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -120,10 +121,34 @@ func (o *Observer) Observe(ctx context.Context, cfg Config) (*StorageSnapshot, e
 	// growth_rate > 0 means disk is being consumed, <= 0 means disk is stable or shrinking.
 	availableBytes := results["pgdata_available_bytes"]
 	growthRate := results["pgdata_worst_case_growth"]
+
+	// If CNPG spec size > kubelet-reported capacity, a resize is propagating and
+	// kubelet metrics still reflect the old (smaller) volume. Estimate available bytes
+	// using the spec size so time-to-full is not artificially low during this window.
+	effectiveAvailable := availableBytes
+	capacityBytes := results["pgdata_capacity_bytes"]
+	if !math.IsNaN(capacityBytes) && !math.IsNaN(availableBytes) && capacityBytes > 0 && pgDataSize != "" {
+		if specQ, err := resource.ParseQuantity(pgDataSize); err == nil {
+			specBytes := float64(specQ.Value())
+			if specBytes > capacityBytes*1.05 {
+				usedBytes := capacityBytes - availableBytes
+				if adj := specBytes - usedBytes; adj > effectiveAvailable {
+					effectiveAvailable = adj
+					slog.Info("pgdata available adjusted for pending resize",
+						"spec", pgDataSize,
+						"kubelet_capacity_gi", capacityBytes/float64(1<<30),
+						"raw_available_gi", availableBytes/float64(1<<30),
+						"adjusted_available_gi", effectiveAvailable/float64(1<<30),
+					)
+				}
+			}
+		}
+	}
+
 	timeToFull := math.Inf(1) // default: disk not filling
-	if !math.IsNaN(availableBytes) && !math.IsNaN(growthRate) {
+	if !math.IsNaN(effectiveAvailable) && !math.IsNaN(growthRate) {
 		if growthRate > 0 {
-			timeToFull = availableBytes / growthRate
+			timeToFull = effectiveAvailable / growthRate
 		}
 	} else {
 		timeToFull = math.NaN()
