@@ -37,19 +37,24 @@ func (d *Decider) DecidePGData(snap *StorageSnapshot, cfg PGDataConfig, guards S
 		return decision
 	}
 
-	// Guard: kubelet capacity metrics lag behind the actual PVC size by up to ~2 min
-	// after a resize (filesystem expansion is async). If CNPG spec size > Prometheus
-	// reported capacity, the previous resize is still propagating → usage% is stale,
-	// skip all decisions to avoid cascading resizes based on outdated metrics.
-	if propagating, reason := isResizePropagating(snap); propagating {
-		decision.Reason = reason
-		return decision
-	}
-
 	// Determine if a resize is warranted by threshold or preemptive signal.
 	critical := usage >= cfg.CriticalThresholdPercent
 	aboveThreshold := usage >= cfg.ScaleUpThresholdPercent
 	preemptive := isPreemptiveNeeded(snap.PGDataTimeToFullSeconds, cfg.PreemptiveResizeIfFullInHours)
+
+	// During resize propagation, kubelet usage% still reflects the old (smaller) capacity —
+	// suppress threshold-based triggers to avoid cascading resizes on stale metrics.
+	// Preemptive remains valid: observer.go already adjusts time-to-full using the spec size.
+	if propagating, propReason := isResizePropagating(snap); propagating && (critical || aboveThreshold) {
+		if !preemptive {
+			decision.Reason = "propagating: " + propReason
+			return decision
+		}
+		// Preemptive is active — suppress stale threshold flags but allow preemptive to proceed.
+		critical = false
+		aboveThreshold = false
+		_ = propReason
+	}
 
 	if !aboveThreshold && !preemptive {
 		decision.Reason = fmt.Sprintf("pgdata usage %.1f%% is below threshold %.1f%%", usage, cfg.ScaleUpThresholdPercent)
