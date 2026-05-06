@@ -37,6 +37,15 @@ func (d *Decider) DecidePGData(snap *StorageSnapshot, cfg PGDataConfig, guards S
 		return decision
 	}
 
+	// Guard: kubelet capacity metrics lag behind the actual PVC size by up to ~2 min
+	// after a resize (filesystem expansion is async). If CNPG spec size > Prometheus
+	// reported capacity, the previous resize is still propagating → usage% is stale,
+	// skip all decisions to avoid cascading resizes based on outdated metrics.
+	if propagating, reason := isResizePropagating(snap); propagating {
+		decision.Reason = reason
+		return decision
+	}
+
 	// Determine if a resize is warranted by threshold or preemptive signal.
 	critical := usage >= cfg.CriticalThresholdPercent
 	aboveThreshold := usage >= cfg.ScaleUpThresholdPercent
@@ -247,4 +256,31 @@ func computeNewSize(currentSizeStr string, stepPercent float64, maxSizeGi int) (
 	}
 
 	return fmt.Sprintf("%dGi", newGi), nil
+}
+
+// isResizePropagating returns (true, reason) when the CNPG spec size is larger than
+// the kubelet-reported PVC capacity, meaning a previous resize has been applied to the
+// Cluster CR but the filesystem expansion has not yet been reflected in Prometheus.
+// In this window, usage% is computed against the old capacity and is artificially high —
+// acting on it would produce redundant cascading resizes.
+func isResizePropagating(snap *StorageSnapshot) (bool, string) {
+	if math.IsNaN(snap.PGDataCapacityBytes) || snap.PGDataCapacityBytes <= 0 {
+		return false, "" // metric unavailable — don't block
+	}
+	if snap.CurrentPGDataSize == "" {
+		return false, ""
+	}
+	specQ, err := resource.ParseQuantity(snap.CurrentPGDataSize)
+	if err != nil {
+		return false, ""
+	}
+	specBytes := float64(specQ.Value())
+	// Allow 5% tolerance for unit rounding (e.g. "18Gi" spec vs kubelet reporting 18*1024^3 exactly).
+	if specBytes > snap.PGDataCapacityBytes*1.05 {
+		return true, fmt.Sprintf(
+			"resize propagating: spec=%s (%.0f GiB) > kubelet capacity=%.1f GiB — metrics lagging, skipping decision",
+			snap.CurrentPGDataSize, specBytes/float64(1<<30), snap.PGDataCapacityBytes/float64(1<<30),
+		)
+	}
+	return false, ""
 }

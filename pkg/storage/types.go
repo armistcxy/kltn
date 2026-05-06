@@ -52,6 +52,11 @@ type StorageSnapshot struct {
 	// ReplicationLagSeconds is the maximum replication lag among all replicas.
 	ReplicationLagSeconds float64
 
+	// PGDataCapacityBytes is the actual PVC capacity reported by kubelet (kubelet_volume_stats_capacity_bytes).
+	// This lags behind CurrentPGDataSize by up to ~2 min after a resize while the filesystem expands.
+	// Used to detect "resize still propagating" and suppress stale-metric decisions.
+	PGDataCapacityBytes float64
+
 	// CurrentPGDataSize is the current spec.storage.size from the Cluster CR (e.g. "10Gi").
 	CurrentPGDataSize string
 

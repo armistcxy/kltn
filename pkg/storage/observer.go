@@ -56,6 +56,10 @@ func (o *Observer) Observe(ctx context.Context, cfg Config) (*StorageSnapshot, e
 			`min(kubelet_volume_stats_available_bytes{namespace="%s",persistentvolumeclaim=~"%s-[0-9]+"})`,
 			cfg.Namespace, cfg.Cluster,
 		),
+		"pgdata_capacity_bytes": fmt.Sprintf(
+			`min(kubelet_volume_stats_capacity_bytes{namespace="%s",persistentvolumeclaim=~"%s-[0-9]+"})`,
+			cfg.Namespace, cfg.Cluster,
+		),
 		// Worst-case growth rate: max of p95 long-term trend and p99 short-term spike.
 		// Windows are configurable so benchmarks can use shorter ranges.
 		"pgdata_worst_case_growth": fmt.Sprintf(
@@ -129,6 +133,7 @@ func (o *Observer) Observe(ctx context.Context, cfg Config) (*StorageSnapshot, e
 		At:                                   time.Now(),
 		PGDataUsagePercent:                   results["pgdata_usage_pct"],
 		PGDataAvailableBytes:                 availableBytes,
+		PGDataCapacityBytes:                  results["pgdata_capacity_bytes"],
 		PGDataWorstCaseGrowthRateBytesPerSec: growthRate,
 		PGDataTimeToFullSeconds:              timeToFull,
 		WALUsageRatio:                        results["wal_usage_ratio"],
