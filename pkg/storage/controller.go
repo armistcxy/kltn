@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"math"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -21,6 +23,27 @@ type Controller struct {
 
 	lastPGDataResizeAt time.Time
 	lastWALResizeAt    time.Time
+
+	// mu protects tPGDataThresholdCrossed and pgdataAboveThreshold which are written by
+	// reconcileOnce and read+reset by confirmation goroutines.
+	mu sync.Mutex
+
+	// tPGDataThresholdCrossed records when pgdata usage most recently crossed scaleUpThreshold
+	// upward (below → above) in the current resize cycle. Zero means threshold not yet crossed.
+	// Updated on every upward edge (not just the first), so oscillating usage tracks the latest
+	// crossing. Reset by the confirmation goroutine after each PVC expansion.
+	tPGDataThresholdCrossed time.Time
+
+	// pgdataAboveThreshold is the threshold state observed in the previous reconcile cycle.
+	// Used to detect upward edge crossings (false → true transitions).
+	pgdataAboveThreshold bool
+
+	// pgDataRiskWindowTotalMs accumulates risk_window across all resize cycles (ms).
+	// pgDataResizeCount and pgDataResizeLatencyTotalMs track resize latency for averaging.
+	// Written from confirmation goroutines; use atomics to avoid mutex.
+	pgDataRiskWindowTotalMs    atomic.Int64
+	pgDataResizeCount          atomic.Int64
+	pgDataResizeLatencyTotalMs atomic.Int64
 }
 
 // NewController creates a storage Controller with all dependencies wired.
@@ -76,6 +99,26 @@ func (c *Controller) reconcileOnce(ctx context.Context) error {
 		"wal_size", snap.CurrentWALSize,
 	)
 
+	// Track most recent upward threshold crossing. Updates tPGDataThresholdCrossed on every
+	// false→true edge so oscillating usage always reflects the latest crossing, not the first.
+	// Reset by the confirmation goroutine after PVC expansion completes.
+	if !math.IsNaN(snap.PGDataUsagePercent) {
+		currentlyAbove := snap.PGDataUsagePercent >= c.cfg.PGData.ScaleUpThresholdPercent
+		c.mu.Lock()
+		if currentlyAbove && !c.pgdataAboveThreshold {
+			c.tPGDataThresholdCrossed = snap.At
+			c.mu.Unlock()
+			slog.Info("pgdata threshold crossed",
+				"usage_pct", snap.PGDataUsagePercent,
+				"threshold_pct", c.cfg.PGData.ScaleUpThresholdPercent,
+				"at", snap.At,
+			)
+		} else {
+			c.mu.Unlock()
+		}
+		c.pgdataAboveThreshold = currentlyAbove
+	}
+
 	// Update state gauges.
 	if !math.IsNaN(snap.PGDataUsagePercent) {
 		pgdataUsagePercent.Set(snap.PGDataUsagePercent)
@@ -124,12 +167,40 @@ func (c *Controller) reconcileOnce(ctx context.Context) error {
 					slog.Warn("pgdata pvc expansion confirmation failed", "err", err)
 					return
 				}
+
+				tConfirmed := time.Now()
+
+				// Read and reset tPGDataThresholdCrossed atomically.
+				// Must be done here (not at trigger time) because the threshold may be
+				// crossed during the propagation window between trigger and confirmation.
+				c.mu.Lock()
+				thresholdCrossedAt := c.tPGDataThresholdCrossed
+				c.tPGDataThresholdCrossed = time.Time{}
+				c.mu.Unlock()
+
+				latencyMs := latency.Milliseconds()
+				count := c.pgDataResizeCount.Add(1)
+				c.pgDataResizeLatencyTotalMs.Add(latencyMs)
+				avgLatencyS := float64(c.pgDataResizeLatencyTotalMs.Load()) / float64(count) / 1000
+
+				var riskWindowS float64
+				if !thresholdCrossedAt.IsZero() {
+					riskWindowMs := tConfirmed.Sub(thresholdCrossedAt).Milliseconds()
+					c.pgDataRiskWindowTotalMs.Add(riskWindowMs)
+					riskWindowS = float64(riskWindowMs) / 1000
+				}
+				totalRiskWindowS := float64(c.pgDataRiskWindowTotalMs.Load()) / 1000
+
 				slog.Info("pgdata pvc expansion confirmed",
 					"old_size", dec.OldSize,
 					"new_size", dec.NewSize,
 					"resize_latency_s", latency.Seconds(),
+					"avg_resize_latency_s", avgLatencyS,
+					"risk_window_s", riskWindowS,
+					"risk_window_total_s", totalRiskWindowS,
 				)
 				storageResizeLatency.WithLabelValues("pgdata").Observe(latency.Seconds())
+				pgdataRiskWindowSeconds.Observe(riskWindowS)
 			}()
 		}
 	}
