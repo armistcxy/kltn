@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	loadgenImage      = "zzzsleepzzz/loadgen:v2.12"
+	loadgenImage      = "zzzsleepzzz/loadgen:v2.28"
 	loadgenNamespace  = "default"
 	loadgenJobTimeout = 40 * time.Minute
 	loadgenPollPeriod = 10 * time.Second
@@ -140,8 +140,8 @@ func buildLoadgenJob(name, cmName string, rc *RunContext) *batchv1.Job {
 					RestartPolicy: corev1.RestartPolicyNever,
 					Containers: []corev1.Container{
 						{
-							Name:  "loadgen",
-							Image: loadgenImage,
+							Name:    "loadgen",
+							Image:   loadgenImage,
 							Command: buildLoadgenCommand(rc),
 							VolumeMounts: []corev1.VolumeMount{
 								{Name: "scenario", MountPath: "/scenarios"},
