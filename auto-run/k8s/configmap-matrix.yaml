@@ -31,11 +31,6 @@ data:
         scenario: loadgen/scenarios/gradual-ramp.yaml
         tags: [thesis-eval, reactive]
 
-      - id: cpu-only-gradual-ramp
-        config: scale-controller-config/cpu-only.yaml
-        scenario: loadgen/scenarios/gradual-ramp.yaml
-        tags: [thesis-eval, baseline, cpu-only]
-
       # ── sudden-spike ──────────────────────────────────────────────
       - id: hybrid-sudden-spike
         config: scale-controller-config/hybrid.yaml
@@ -51,11 +46,6 @@ data:
         config: scale-controller-config/reactive-only.yaml
         scenario: loadgen/scenarios/sudden-spike.yaml
         tags: [thesis-eval, reactive]
-
-      - id: cpu-only-sudden-spike
-        config: scale-controller-config/cpu-only.yaml
-        scenario: loadgen/scenarios/sudden-spike.yaml
-        tags: [thesis-eval, baseline, cpu-only]
 
       # ── periodic-wave ─────────────────────────────────────────────
       - id: hybrid-periodic-wave
@@ -73,11 +63,6 @@ data:
         scenario: loadgen/scenarios/periodic-wave.yaml
         tags: [thesis-eval, reactive]
 
-      - id: cpu-only-periodic-wave
-        config: scale-controller-config/cpu-only.yaml
-        scenario: loadgen/scenarios/periodic-wave.yaml
-        tags: [thesis-eval, baseline, cpu-only]
-
       # ── real-world-mix ────────────────────────────────────────────
       - id: hybrid-real-world-mix
         config: scale-controller-config/hybrid.yaml
@@ -93,29 +78,3 @@ data:
         config: scale-controller-config/reactive-only.yaml
         scenario: loadgen/scenarios/real-world-mix.yaml
         tags: [thesis-eval, reactive]
-
-      - id: cpu-only-real-world-mix
-        config: scale-controller-config/cpu-only.yaml
-        scenario: loadgen/scenarios/real-world-mix.yaml
-        tags: [thesis-eval, baseline, cpu-only]
-
-      # ── endurance-mixed ───────────────────────────────────────────
-      - id: hybrid-endurance-mixed
-        config: scale-controller-config/hybrid.yaml
-        scenario: loadgen/scenarios/endurance-mixed.yaml
-        tags: [thesis-eval, hybrid, endurance]
-
-      - id: predictive-endurance-mixed
-        config: scale-controller-config/predictive-only.yaml
-        scenario: loadgen/scenarios/endurance-mixed.yaml
-        tags: [thesis-eval, predictive, endurance]
-
-      - id: reactive-endurance-mixed
-        config: scale-controller-config/reactive-only.yaml
-        scenario: loadgen/scenarios/endurance-mixed.yaml
-        tags: [thesis-eval, reactive, endurance]
-
-      - id: cpu-only-endurance-mixed
-        config: scale-controller-config/cpu-only.yaml
-        scenario: loadgen/scenarios/endurance-mixed.yaml
-        tags: [thesis-eval, baseline, cpu-only, endurance]
