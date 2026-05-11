@@ -46,6 +46,9 @@ type Config struct {
 	// Discovery, when non-nil, replaces DBURL with dynamic per-pod pool management.
 	// The engine resolves the headless service DNS and maintains one pool per pod.
 	Discovery *DiscoveryPool
+	// PoolMaxConns overrides the pool's MaxConns (default: Concurrency+2).
+	// Set equal to Concurrency for exactly one connection per worker.
+	PoolMaxConns int
 }
 
 // Engine manages the load generation loop.
@@ -137,7 +140,11 @@ func (e *Engine) connect(ctx context.Context) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, err
 	}
-	cfg.MaxConns = int32(e.config.Concurrency + 2)
+	maxConns := int32(e.config.Concurrency + 2)
+	if e.config.PoolMaxConns > 0 {
+		maxConns = int32(e.config.PoolMaxConns)
+	}
+	cfg.MaxConns = maxConns
 	cfg.MinConns = 0
 	// Force connections to expire so the pool reconnects to newly-scaled replicas.
 	// Without these, idle connections stay pinned to the same backend indefinitely.
@@ -245,7 +252,13 @@ func (e *Engine) workerLoop(ctx context.Context, pool connPool, workerIdx int) {
 				conn, err = pool.Acquire(ctx)
 			}
 			if err != nil {
-				return
+				e.stats.Record(0, err)
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(200 * time.Millisecond):
+				}
+				continue
 			}
 		}
 

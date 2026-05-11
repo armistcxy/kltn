@@ -30,6 +30,7 @@ var runFlags struct {
 	ScenarioFile      string
 	MetricsPort       int
 	ScaleFactor       int
+	PoolMaxConns      int // 0 = auto (Concurrency+2)
 }
 
 var runCmd = &cobra.Command{
@@ -57,6 +58,7 @@ func init() {
 	f.StringVar(&runFlags.ScenarioFile, "scenario", "", "Optional YAML scenario file for stepped load patterns")
 	f.IntVar(&runFlags.MetricsPort, "metrics-port", 9090, "Prometheus /metrics port (0 = disabled)")
 	f.IntVar(&runFlags.ScaleFactor, "scale-factor", 1, "pgbench scale factor (matches -s used during pgbench -i)")
+	f.IntVar(&runFlags.PoolMaxConns, "pool-max-conns", 0, "override pool MaxConns (default: concurrency+2); set equal to --concurrency for exactly one connection per worker")
 
 	rootCmd.AddCommand(runCmd)
 }
@@ -119,14 +121,15 @@ func runRun(_ *cobra.Command, _ []string) error {
 	}
 
 	cfg := engine.Config{
-		DBURL:       dbURL,
-		Concurrency: runFlags.Concurrency,
-		Duration:    duration,
-		MaxRPS:      maxRPS,
-		Workload:    wl,
-		ReportEvery: 5 * time.Second,
-		OnSnapshot:  makeReporter(wl.Name()),
-		Discovery:   discovery,
+		DBURL:        dbURL,
+		Concurrency:  runFlags.Concurrency,
+		Duration:     duration,
+		MaxRPS:       maxRPS,
+		Workload:     wl,
+		ReportEvery:  5 * time.Second,
+		OnSnapshot:   makeReporter(wl.Name()),
+		Discovery:    discovery,
+		PoolMaxConns: runFlags.PoolMaxConns,
 	}
 
 	eng := engine.New(cfg)
