@@ -32,8 +32,12 @@ type metricQuery struct {
 // Metric names match the scale-controller's exported gauges (see internal/scale/metrics.go).
 var queriesForRun = []metricQuery{
 	{
+		// count() returns a single series (no multi-series bleed from pod restarts).
+		// pod=~"pg-cluster-[0-9]+" matches only actual instance pods (pg-cluster-1,
+		// pg-cluster-2, ...) — excludes recovery/join/initdb pods which have
+		// non-numeric suffixes. kube_pod_status_ready==1 excludes Init/Pending pods.
 		Filename: "replicas.csv",
-		PromQL:   `scaling_instances_current`,
+		PromQL:   `count(kube_pod_status_ready{namespace="default",pod=~"pg-cluster-[0-9]+",condition="true"} == 1) or vector(0)`,
 	},
 	{
 		Filename: "replicas_target_final.csv",
