@@ -1,0 +1,10 @@
+name: storage_steady
+steps:
+  - duration: 2m   
+    rps: 100
+    end_rps: 500
+  - duration: 6m
+    rps: 500
+  - duration: 2m
+    rps: 500
+    end_rps: 100
