@@ -1,4 +1,0 @@
-name: ramp
-steps:
-  - duration: 20s
-    rps: 100

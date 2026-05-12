@@ -40,20 +40,17 @@ func TestRPS_linearRamp(t *testing.T) {
 
 func TestRPS_multiStep(t *testing.T) {
 	p := steps(
-		Step{Duration: 30 * time.Second, RPS: 50},                        // flat
-		Step{Duration: 60 * time.Second, RPS: 50, EndRPS: 1500},          // ramp
-		Step{Duration: 20 * time.Second, RPS: 1500},                      // sustain
+		Step{Duration: 30 * time.Second, RPS: 50},
+		Step{Duration: 60 * time.Second, RPS: 50, EndRPS: 1500},
+		Step{Duration: 20 * time.Second, RPS: 1500},
 	)
 
-	// phase 1
 	if got := p.RPS(15 * time.Second); got != 50 {
 		t.Errorf("phase1: want 50, got %f", got)
 	}
-	// phase 2 midpoint: 50 + 0.5*(1500-50) = 775
 	if got := p.RPS(60 * time.Second); got != 775 {
 		t.Errorf("phase2 mid: want 775, got %f", got)
 	}
-	// phase 3
 	if got := p.RPS(100 * time.Second); got != 1500 {
 		t.Errorf("phase3: want 1500, got %f", got)
 	}
@@ -61,7 +58,6 @@ func TestRPS_multiStep(t *testing.T) {
 
 func TestRPS_afterAllSteps(t *testing.T) {
 	p := steps(Step{Duration: 10 * time.Second, RPS: 200, EndRPS: 400})
-	// well past the end — should hold EndRPS
 	if got := p.RPS(999 * time.Second); got != 400 {
 		t.Errorf("after end: want 400, got %f", got)
 	}

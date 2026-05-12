@@ -20,9 +20,9 @@ import (
 
 var runFlags struct {
 	DBURL             string
-	DBURLs            string        // comma-separated list for distributed load across specific pods
-	DiscoveryHost     string        // headless service URL for dynamic DNS-based pod discovery
-	DiscoveryInterval time.Duration // how often to re-resolve DNS (default 30s)
+	DBURLs            string
+	DiscoveryHost     string
+	DiscoveryInterval time.Duration // how often to re-resolve DNS
 	WorkloadName      string
 	Concurrency       int
 	Duration          time.Duration
@@ -30,7 +30,7 @@ var runFlags struct {
 	ScenarioFile      string
 	MetricsPort       int
 	ScaleFactor       int
-	PoolMaxConns      int // 0 = auto (Concurrency+2)
+	PoolMaxConns      int // 0 = auto
 }
 
 var runCmd = &cobra.Command{
@@ -107,17 +107,17 @@ func runRun(_ *cobra.Command, _ []string) error {
 		}
 	}
 
-	// Multi-target mode: distribute load evenly across explicit pod URLs.
+	// Multi-target mode (distribute load evenly across explicit pod URLs)
 	if runFlags.DBURLs != "" {
 		return runMulti(ctx, wl, pat, duration, maxRPS)
 	}
 
-	// Discovery mode: resolve headless service DNS → per-pod pools, re-discover periodically.
+	// Discovery mode (resolve headless service DNS to per-pod pools, re-discover periodically)
 	var discovery *engine.DiscoveryPool
 	dbURL := runFlags.DBURL
 	if runFlags.DiscoveryHost != "" {
 		discovery = engine.NewDiscoveryPool(runFlags.DiscoveryHost, runFlags.Concurrency, runFlags.DiscoveryInterval)
-		dbURL = "" // not used in discovery mode
+		dbURL = ""
 	}
 
 	cfg := engine.Config{
@@ -127,7 +127,7 @@ func runRun(_ *cobra.Command, _ []string) error {
 		MaxRPS:       maxRPS,
 		Workload:     wl,
 		ReportEvery:  5 * time.Second,
-		OnSnapshot:   makeReporter(wl.Name()),
+		OnSnapshot:   makeReporter(),
 		Discovery:    discovery,
 		PoolMaxConns: runFlags.PoolMaxConns,
 	}
@@ -150,7 +150,6 @@ func runRun(_ *cobra.Command, _ []string) error {
 }
 
 // runMulti spawns one engine per URL in --db-urls, splitting --concurrency evenly.
-// This ensures exact connection distribution across pods, bypassing kube-proxy randomness.
 func runMulti(ctx context.Context, wl workload.Workload, pat *pattern.StepPattern, duration time.Duration, maxRPS float64) error {
 	urls := strings.Split(runFlags.DBURLs, ",")
 	n := len(urls)
@@ -164,7 +163,6 @@ func runMulti(ctx context.Context, wl workload.Workload, pat *pattern.StepPatter
 		rpsPerEngine = maxRPS / float64(n)
 	}
 
-	// Per-engine latest snapshot for aggregate reporting.
 	type latestSnap struct {
 		mu  sync.Mutex
 		val engine.Snapshot
@@ -190,10 +188,10 @@ func runMulti(ctx context.Context, wl workload.Workload, pat *pattern.StepPatter
 		engines[i] = engine.New(cfg)
 	}
 
-	// Aggregate reporter: prints combined TPS every 5s.
 	reportCtx, cancelReport := context.WithCancel(ctx)
 	defer cancelReport()
 	go func() {
+		// print combined TPS every 5s
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 		for {
@@ -302,16 +300,12 @@ func aggregateSummaries(summaries []*engine.Summary) *engine.Summary {
 }
 
 // drivePattern adjusts the engine's rate every second according to the pattern.
-// It also updates metrics.TargetRPS so the autoscaler can use the intended load
-// as a scaling signal — avoiding connection pool pre-allocation noise from
-// pg_stat_activity.
 func drivePattern(ctx context.Context, eng *engine.Engine, pat *pattern.StepPattern) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	start := time.Now()
 
-	// Apply the initial rate immediately so the engine doesn't fire unthrottled
-	// for the first second before the ticker fires.
+	// apply the initial rate immediately so the engine doesn't fire unthrottled for the first second before the ticker fires
 	initialRPS := pat.RPS(0)
 	eng.SetRate(initialRPS)
 	metrics.TargetRPS.Set(initialRPS)
@@ -330,7 +324,7 @@ func drivePattern(ctx context.Context, eng *engine.Engine, pat *pattern.StepPatt
 	}
 }
 
-func makeReporter(workloadName string) func(engine.Snapshot) {
+func makeReporter() func(engine.Snapshot) {
 	return func(snap engine.Snapshot) {
 		// Update Prometheus gauges.
 		metrics.CurrentRPS.Set(snap.TPS)

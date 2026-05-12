@@ -22,10 +22,7 @@ func defaultSleepDuration() float64 {
 	return 0.1
 }
 
-// SleepHold holds a connection for a configurable duration without consuming CPU.
-// It runs SELECT pg_sleep($duration), which simulates a slow transaction that
-// keeps the connection open — the key mechanism for connection exhaustion testing.
-// Configure via SLEEP_HOLD_SECONDS env var (default: 0.1).
+// SleepHold holds a connection for a configurable duration without consuming CPU
 type SleepHold struct {
 	sleepDuration float64
 }

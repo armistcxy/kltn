@@ -10,19 +10,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Pattern drives the rate limiter over time.
+// Pattern drives the rate limiter over time
 type Pattern interface {
-	// RPS returns the target requests-per-second at elapsed time t.
 	RPS(t time.Duration) float64
-	// Done reports whether the pattern has finished.
 	Done(t time.Duration) bool
-	// TotalDuration is the sum of all step durations (0 if unbounded).
 	TotalDuration() time.Duration
 }
 
-// Step is one phase in a multi-step scenario.
-// When EndRPS is non-zero, RPS is interpolated linearly from RPS → EndRPS
-// over the step's Duration.
+// Step is one phase in a multi-step scenario
 type Step struct {
 	Duration time.Duration `yaml:"duration"`
 	RPS      float64       `yaml:"rps"`
@@ -39,13 +34,13 @@ type ScenarioFile struct {
 	} `yaml:"steps"`
 }
 
-// StepPattern runs a sequence of (duration, rps) steps, then holds the last RPS.
+// StepPattern runs a sequence of (duration, rps) steps, then holds the last RPS
 type StepPattern struct {
 	steps    []Step
 	totalDur time.Duration
 }
 
-// LoadFile parses a YAML scenario file into a Pattern.
+// LoadFile parses a YAML scenario file into a Pattern
 func LoadFile(path string) (*StepPattern, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -87,7 +82,6 @@ func (p *StepPattern) RPS(t time.Duration) float64 {
 			return s.RPS + progress*(s.EndRPS-s.RPS)
 		}
 	}
-	// After all steps: hold last RPS (or EndRPS if the final step has one).
 	last := p.steps[len(p.steps)-1]
 	if last.EndRPS != 0 {
 		return last.EndRPS
@@ -95,5 +89,5 @@ func (p *StepPattern) RPS(t time.Duration) float64 {
 	return last.RPS
 }
 
-func (p *StepPattern) Done(t time.Duration) bool       { return t >= p.totalDur }
-func (p *StepPattern) TotalDuration() time.Duration    { return p.totalDur }
+func (p *StepPattern) Done(t time.Duration) bool    { return t >= p.totalDur }
+func (p *StepPattern) TotalDuration() time.Duration { return p.totalDur }

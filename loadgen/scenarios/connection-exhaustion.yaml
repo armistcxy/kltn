@@ -1,22 +1,15 @@
 name: connection_exhaustion
 steps:
-  # Phase 1: warmup — ~40 connections, 1 replica thoải mái
   - duration: 60s
     rps: 400
 
-  # Phase 2: ramp qua ngưỡng 950 TPS (giới hạn của 1 replica)
-  # Khoảng giữa step này TPS sẽ plateau tại ~950 dù target cao hơn
   - duration: 120s
     rps: 400
     end_rps: 1400
 
-  # Phase 3: hold — 1 replica bị exhausted (TPS stuck ~950)
-  # Controller backends-aware phát hiện cnpg_backends_total ~90-95
-  # Scale lên 2 replicas → connections phân tán → TPS bứt phá lên ~1400
   - duration: 180s
     rps: 1400
 
-  # Phase 4: cooldown — load giảm, controller scale back về 1
   - duration: 90s
     rps: 1400
     end_rps: 200

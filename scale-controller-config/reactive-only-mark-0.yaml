@@ -1,0 +1,14 @@
+minInstances: 1
+maxInstances: 5
+pollInterval: 15s
+cooldown: 30s
+scaleDownStabilizationWindow: 50s
+aggregation: max
+scalingMode: reactive
+
+metrics:
+  - name: backends
+    query: 'avg_over_time(sum(cnpg_pg_active_backends_backends_total{state="active", usename="app"})[1m:15s])'
+    scaleDownThreshold: 25
+    targetValuePerReplica: 75
+    scaleDownGuard: true

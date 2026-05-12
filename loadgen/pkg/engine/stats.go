@@ -10,8 +10,10 @@ import (
 )
 
 // Stats tracks latency and throughput using an HDR histogram.
-// It maintains two histograms: cumulative (for the final summary) and
-// per-interval (reset on each Snapshot() call for live reporting).
+//
+// cumulative for the final summary
+//
+// per-interval (reset on each Snapshot() call) for live reporting
 type Stats struct {
 	mu           sync.Mutex
 	cumHist      *hdrhistogram.Histogram
@@ -26,7 +28,7 @@ type Stats struct {
 	intervalStart time.Time
 }
 
-// Snapshot is a point-in-time view of the load metrics over the last interval.
+// Snapshot is a point-in-time view of the load metrics over the last interval
 type Snapshot struct {
 	Elapsed  time.Duration
 	TPS      float64
@@ -52,7 +54,6 @@ type Summary struct {
 
 func NewStats() *Stats {
 	return &Stats{
-		// 1 µs to 1 hour, 3 significant digits
 		cumHist:      hdrhistogram.New(1, 3_600_000_000, 3),
 		intervalHist: hdrhistogram.New(1, 3_600_000_000, 3),
 	}
@@ -64,7 +65,7 @@ func (s *Stats) Start() {
 	s.intervalStart = now
 }
 
-// Record adds a single observation. err may be nil.
+// Record adds a single observation
 func (s *Stats) Record(latency time.Duration, err error) {
 	us := latency.Microseconds()
 	if us < 1 {
@@ -84,7 +85,6 @@ func (s *Stats) Record(latency time.Duration, err error) {
 	}
 }
 
-// Snapshot returns stats for the last interval and resets the interval counters.
 func (s *Stats) Snapshot() Snapshot {
 	now := time.Now()
 
@@ -116,7 +116,7 @@ func (s *Stats) Snapshot() Snapshot {
 	}
 }
 
-// FinalSummary returns aggregate stats for the full run.
+// FinalSummary returns aggregate stats for the full run
 func (s *Stats) FinalSummary() *Summary {
 	now := time.Now()
 	elapsed := now.Sub(s.startTime)
@@ -143,7 +143,7 @@ func (s *Stats) FinalSummary() *Summary {
 	}
 }
 
-// FormatSnapshot produces a single-line console report for a snapshot.
+// FormatSnapshot produces a single-line console report for a snapshot
 func FormatSnapshot(s Snapshot) string {
 	return fmt.Sprintf(
 		"[%5s] TPS: %7.1f | P50: %7s | P95: %7s | P99: %7s | Errors: %d | Total: %d",

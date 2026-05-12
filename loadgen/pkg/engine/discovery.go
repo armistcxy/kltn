@@ -11,11 +11,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// DiscoveryPool resolves a headless-service DNS hostname to individual pod IPs
-// and maintains one pgxpool per pod. Workers use AcquireForWorker so each worker
-// is pinned to a specific pod (workerIdx % podCount). When pod count changes on
-// re-discovery the modulo automatically redistributes workers to the new pod.
-// Re-discovery runs every DiscoverInterval so the pool tracks autoscaling events.
+// DiscoveryPool resolves a headless-service DNS hostname to individual pod IPs and maintains one pgxpool per pod.
+//
+// Workers use AcquireForWorker so each worker is pinned to a specific pod (workerIdx % podCount).
 type DiscoveryPool struct {
 	baseURL          string
 	concPerPod       int
@@ -30,7 +28,7 @@ type podPool struct {
 	pool *pgxpool.Pool
 }
 
-// NewDiscoveryPool creates a DiscoveryPool. Call Start() before use.
+// NewDiscoveryPool creates a DiscoveryPool
 func NewDiscoveryPool(baseURL string, concPerPod int, discoverInterval time.Duration) *DiscoveryPool {
 	return &DiscoveryPool{
 		baseURL:          baseURL,
@@ -40,7 +38,6 @@ func NewDiscoveryPool(baseURL string, concPerPod int, discoverInterval time.Dura
 }
 
 // Start performs the initial DNS resolution and opens per-pod pools.
-// Launches a background goroutine to re-discover on each interval.
 func (dp *DiscoveryPool) Start(ctx context.Context) error {
 	if err := dp.discover(ctx); err != nil {
 		return err
@@ -61,8 +58,6 @@ func (dp *DiscoveryPool) Start(ctx context.Context) error {
 }
 
 // AcquireForWorker returns a connection from the pod assigned to this worker.
-// Assignment is workerIdx % podCount, so the mapping is stable while pod count
-// is unchanged and naturally redistributes to new pods when count changes.
 func (dp *DiscoveryPool) AcquireForWorker(ctx context.Context, workerIdx int) (*pgxpool.Conn, error) {
 	dp.mu.RLock()
 	pods := dp.pods
@@ -74,13 +69,10 @@ func (dp *DiscoveryPool) AcquireForWorker(ctx context.Context, workerIdx int) (*
 	return pods[workerIdx%len(pods)].pool.Acquire(ctx)
 }
 
-// Acquire satisfies connPool for warmup (uses worker 0's pod — warmup calls
-// AcquireForWorker directly with the correct index instead).
 func (dp *DiscoveryPool) Acquire(ctx context.Context) (*pgxpool.Conn, error) {
 	return dp.AcquireForWorker(ctx, 0)
 }
 
-// AnyPool returns one of the underlying pools (used for one-time Prepare calls).
 func (dp *DiscoveryPool) AnyPool() *pgxpool.Pool {
 	dp.mu.RLock()
 	defer dp.mu.RUnlock()
@@ -90,14 +82,12 @@ func (dp *DiscoveryPool) AnyPool() *pgxpool.Pool {
 	return dp.pods[0].pool
 }
 
-// PodCount returns the number of currently discovered pods.
 func (dp *DiscoveryPool) PodCount() int {
 	dp.mu.RLock()
 	defer dp.mu.RUnlock()
 	return len(dp.pods)
 }
 
-// Close closes all per-pod pools.
 func (dp *DiscoveryPool) Close() {
 	dp.mu.Lock()
 	defer dp.mu.Unlock()
@@ -130,13 +120,12 @@ func (dp *DiscoveryPool) discover(ctx context.Context) error {
 		} else {
 			pool, err := buildPodPool(ctx, dp.baseURL, ip, dp.concPerPod)
 			if err != nil {
-				continue // skip unreachable pod, keep trying next interval
+				continue
 			}
 			newPods = append(newPods, &podPool{ip: ip, pool: pool})
 		}
 	}
 
-	// Close pools for pods that are no longer in DNS.
 	for ip, pool := range existing {
 		if !seen[ip] {
 			pool.Close()
@@ -148,7 +137,6 @@ func (dp *DiscoveryPool) discover(ctx context.Context) error {
 }
 
 // resolveAllIPs does a DNS A-record lookup for the hostname in rawURL.
-// With a headless Kubernetes service this returns one IP per pod.
 func resolveAllIPs(rawURL string) ([]string, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {

@@ -28,8 +28,6 @@ func (m *mockWorkload) Execute(ctx context.Context, _ *pgxpool.Conn) error {
 	return m.execErr
 }
 
-// --- Stats unit tests ---
-
 func TestStatsRecord(t *testing.T) {
 	s := NewStats()
 	s.Start()
@@ -62,17 +60,14 @@ func TestStatsSnapshotResetsInterval(t *testing.T) {
 	s.Record(5*time.Millisecond, nil)
 	snap1 := s.Snapshot()
 
-	// After snapshot the interval counters reset.
 	snap2 := s.Snapshot()
 
 	if snap1.TPS <= 0 {
 		t.Error("snap1 TPS should be positive")
 	}
-	// snap2 covers an empty interval — interval ops is 0.
 	if snap2.TPS != 0 {
 		t.Errorf("snap2 TPS: want 0 (no new ops), got %f", snap2.TPS)
 	}
-	// But TotalOps is cumulative.
 	if snap2.TotalOps != 2 {
 		t.Errorf("snap2 TotalOps: want 2, got %d", snap2.TotalOps)
 	}
@@ -102,8 +97,6 @@ func TestFinalSummary(t *testing.T) {
 	}
 }
 
-// --- Engine unit tests (no real DB) ---
-
 func TestEngineRunMock(t *testing.T) {
 	wl := &mockWorkload{name: "mock", delay: 1 * time.Millisecond}
 	cfg := Config{
@@ -114,7 +107,7 @@ func TestEngineRunMock(t *testing.T) {
 	}
 
 	eng := New(cfg)
-	eng.SetPool(nil) // no pool; mock workload ignores it
+	eng.SetPool(nil)
 
 	sum, err := eng.run(context.Background(), nil)
 	if err != nil {
@@ -133,7 +126,7 @@ func TestEngineRateLimit(t *testing.T) {
 	cfg := Config{
 		Concurrency: 8,
 		Duration:    300 * time.Millisecond,
-		MaxRPS:      20, // cap at 20 RPS
+		MaxRPS:      20,
 		ReportEvery: 1 * time.Second,
 		Workload:    wl,
 	}
@@ -144,8 +137,6 @@ func TestEngineRateLimit(t *testing.T) {
 		t.Fatalf("run error: %v", err)
 	}
 
-	// With a 300ms window at 20 RPS we expect ~6 ops.
-	// Allow generous margin for scheduler jitter.
 	if sum.TotalOps > 30 {
 		t.Errorf("rate limit exceeded: got %d ops in 300ms at 20 RPS", sum.TotalOps)
 	}
@@ -155,7 +146,7 @@ func TestEngineGracefulCancel(t *testing.T) {
 	wl := &mockWorkload{name: "mock", delay: 5 * time.Millisecond}
 	cfg := Config{
 		Concurrency: 4,
-		Duration:    10 * time.Second, // long duration
+		Duration:    10 * time.Second,
 		ReportEvery: 1 * time.Second,
 		Workload:    wl,
 	}
@@ -168,7 +159,6 @@ func TestEngineGracefulCancel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run error: %v", err)
 	}
-	// Should have stopped early due to ctx cancellation.
 	if sum.Duration > 500*time.Millisecond {
 		t.Errorf("did not stop early: duration=%s", sum.Duration)
 	}
@@ -179,9 +169,5 @@ func TestSetRate(t *testing.T) {
 	eng.SetRate(100)
 	if eng.limiter.Limit() != 100 {
 		t.Errorf("SetRate(100): want limit=100, got %v", eng.limiter.Limit())
-	}
-	eng.SetRate(0) // unlimited
-	if eng.limiter.Limit() != 0 { // rate.Inf == 0 sentinel in some versions
-		// just check no panic
 	}
 }

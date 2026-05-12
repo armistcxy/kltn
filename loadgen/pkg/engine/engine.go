@@ -10,54 +10,42 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// connPool is the minimal interface satisfied by both *pgxpool.Pool and *DiscoveryPool.
 type connPool interface {
 	Acquire(context.Context) (*pgxpool.Conn, error)
 }
 
-// Workload is executed repeatedly by each worker goroutine.
-// Each worker holds a single persistent *pgxpool.Conn for its lifetime —
-// matching pgbench's one-connection-per-client model and eliminating
-// per-transaction Acquire/Release overhead.
+// Workload is executed repeatedly by each worker goroutine
 type Workload interface {
 	Name() string
-	// Execute runs one unit of work on the provided persistent connection.
 	Execute(ctx context.Context, conn *pgxpool.Conn) error
 }
 
-// Preparer is an optional interface a Workload can implement to perform
-// one-time setup (e.g. querying DB metadata) before workers are spawned.
+// Preparer is an optional interface a Workload can implement to perform setup before workers are spawned
 type Preparer interface {
 	Prepare(ctx context.Context, pool *pgxpool.Pool) error
 }
 
-// Config holds all engine parameters.
+// Config holds all engine parameters
 type Config struct {
 	DBURL       string
 	Concurrency int
 	Duration    time.Duration
-	// MaxRPS sets a global request rate cap. 0 means unlimited.
+	// MaxRPS sets a global request rate cap (0 means unlimited)
 	MaxRPS      float64
 	Workload    Workload
 	ReportEvery time.Duration
-	// OnSnapshot is called after each reporting interval with the current stats.
-	// If nil, FormatSnapshot output is printed to stdout.
-	OnSnapshot func(Snapshot)
-	// Discovery, when non-nil, replaces DBURL with dynamic per-pod pool management.
-	// The engine resolves the headless service DNS and maintains one pool per pod.
-	Discovery *DiscoveryPool
-	// PoolMaxConns overrides the pool's MaxConns (default: Concurrency+2).
-	// Set equal to Concurrency for exactly one connection per worker.
+	// OnSnapshot is called after each reporting interval with the current stats (default: print to stdout)
+	OnSnapshot   func(Snapshot)
+	Discovery    *DiscoveryPool
 	PoolMaxConns int
 }
 
-// Engine manages the load generation loop.
+// Engine manages the load generation loop
 type Engine struct {
 	config  Config
 	limiter *rate.Limiter
 	stats   *Stats
-	// pool may be injected externally (e.g. for testing); otherwise created in Run.
-	pool *pgxpool.Pool
+	pool    *pgxpool.Pool
 }
 
 func New(config Config) *Engine {
@@ -83,7 +71,7 @@ func New(config Config) *Engine {
 	}
 }
 
-// SetRate adjusts the global rate cap at runtime (thread-safe).
+// SetRate adjusts the global rate cap at runtime
 func (e *Engine) SetRate(rps float64) {
 	if rps <= 0 {
 		e.limiter.SetLimit(rate.Inf)
@@ -98,22 +86,19 @@ func (e *Engine) SetRate(rps float64) {
 	}
 }
 
-// SetPool injects a pre-built pool (used in tests to avoid a real DB).
+// SetPool injects a pre-built pool (used in tests to avoid a real DB)
 func (e *Engine) SetPool(pool *pgxpool.Pool) {
 	e.pool = pool
 }
 
-// Run connects to the database, spawns workers, and drives load until the
-// context is cancelled or the configured Duration elapses.
+// Run connects to the database, spawns workers, and drives load
 func (e *Engine) Run(ctx context.Context) (*Summary, error) {
-	// Discovery mode: resolve headless service DNS → per-pod pools.
 	if e.config.Discovery != nil {
 		dp := e.config.Discovery
 		if err := dp.Start(ctx); err != nil {
 			return nil, fmt.Errorf("discovery: %w", err)
 		}
 		defer dp.Close()
-		// Prepare workload using any available pod pool.
 		if p, ok := e.config.Workload.(Preparer); ok {
 			if pool := dp.AnyPool(); pool != nil {
 				if err := p.Prepare(ctx, pool); err != nil {
@@ -146,21 +131,15 @@ func (e *Engine) connect(ctx context.Context) (*pgxpool.Pool, error) {
 	}
 	cfg.MaxConns = maxConns
 	cfg.MinConns = 0
-	// Force connections to expire so the pool reconnects to newly-scaled replicas.
-	// Without these, idle connections stay pinned to the same backend indefinitely.
 	cfg.MaxConnLifetime = 30 * time.Second
 	cfg.MaxConnIdleTime = 10 * time.Second
 	return pgxpool.NewWithConfig(ctx, cfg)
 }
 
-// run is the internal execution loop. It always applies the configured Duration
-// as a hard deadline on top of ctx, so tests can call it directly with any context.
-// cp may be a *pgxpool.Pool (single target) or a *DiscoveryPool (multi-pod).
 func (e *Engine) run(ctx context.Context, cp connPool) (*Summary, error) {
 	runCtx, cancel := context.WithTimeout(ctx, e.config.Duration)
 	defer cancel()
 
-	// One-time workload setup for single-pool mode (discovery mode calls Prepare in Run()).
 	if pool, ok := cp.(*pgxpool.Pool); ok {
 		if p, ok := e.config.Workload.(Preparer); ok && pool != nil {
 			if err := p.Prepare(runCtx, pool); err != nil {
@@ -169,10 +148,8 @@ func (e *Engine) run(ctx context.Context, cp connPool) (*Summary, error) {
 		}
 	}
 
-	// Pre-warm the connection pool before starting the stats clock.
-	// For DiscoveryPool, warmup uses AcquireForWorker so each pod gets exactly
-	// concurrency/podCount connections pre-opened, matching the worker affinity.
 	if cp != nil {
+		// Pre-warm the connection pool before starting the stats clock
 		warmup := make([]*pgxpool.Conn, e.config.Concurrency)
 		for i := range warmup {
 			var err error
@@ -204,7 +181,6 @@ func (e *Engine) run(ctx context.Context, cp connPool) (*Summary, error) {
 		}()
 	}
 
-	// Periodic reporter runs until runCtx is done.
 	reportDone := make(chan struct{})
 	go func() {
 		defer close(reportDone)
@@ -227,10 +203,7 @@ func (e *Engine) run(ctx context.Context, cp connPool) (*Summary, error) {
 	return e.stats.FinalSummary(), nil
 }
 
-// workerLoop acquires a connection per transaction and releases it immediately.
-// workerIdx pins this worker to a specific pod when using DiscoveryPool:
-// the assigned pod is workerIdx % podCount, which naturally redistributes
-// workers to new pods when the cluster scales without disrupting stable workers.
+// workerLoop acquires a connection per transaction and releases it immediately
 func (e *Engine) workerLoop(ctx context.Context, pool connPool, workerIdx int) {
 	for {
 		select {

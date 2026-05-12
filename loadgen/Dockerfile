@@ -8,7 +8,6 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o loadgen ./cmd/loadgen
 
-# ----
 
 FROM alpine:3.19
 

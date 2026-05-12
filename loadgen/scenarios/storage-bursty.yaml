@@ -1,17 +1,17 @@
 name: storage_bursty
 steps:
   - duration: 3m
-    rps: 200        # idle baseline
-  - duration: 1m
+    rps: 200
+  - duration: 2m
     rps: 500
-    end_rps: 600    # burst cycle 1
+    end_rps: 800
   - duration: 2m
     rps: 200
   - duration: 2m
-    rps: 1000       # burst cycle 2
+    rps: 1500
   - duration: 2m
     rps: 200
   - duration: 2m
-    rps: 600        # burst cycle 3
+    rps: 600
   - duration: 1m
     rps: 200

@@ -1,5 +1,3 @@
-// Package metrics exposes loadgen runtime metrics via a Prometheus /metrics endpoint.
-// Full implementation in WP4. This file registers the core metrics used by the engine.
 package metrics
 
 import (
@@ -38,11 +36,6 @@ var (
 		Help:      "Observed requests per second over the last reporting interval.",
 	})
 
-	// TargetRPS is the intended load from the scenario pattern at the current moment.
-	// Updated every second by drivePattern. Unlike CurrentRPS (measured from DB side)
-	// this is unaffected by connection pool pre-allocation or Prometheus scrape timing —
-	// use it as the primary scaling signal when the loadgen and controller share the same
-	// Prometheus instance.
 	TargetRPS = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: "loadgen",
 		Name:      "target_rps",
@@ -50,8 +43,7 @@ var (
 	})
 )
 
-// Server starts a Prometheus metrics HTTP server on the given address.
-// It shuts down gracefully when ctx is cancelled.
+// Server starts a Prometheus metrics HTTP server on the given address
 func Server(ctx context.Context, addr string) error {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())

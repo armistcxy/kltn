@@ -34,10 +34,7 @@ func main() {
 	logFile := flag.String("log-file", "scale-controller.log", "Path to log file (written alongside stdout)")
 	flag.Parse()
 
-	// Structured logging — tee to stdout and a file.
-	// Use a shared slog handler so controller-runtime internals (CNPG scheme, etc.)
-	// write to the same output and format instead of emitting the "log.SetLogger
-	// was never called" warning.
+	// Write log to a file and stdout simultaneously
 	f, err := os.OpenFile(*logFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		log.Fatalf("failed to open log file %s: %v", *logFile, err)
@@ -48,22 +45,21 @@ func main() {
 	slog.SetDefault(slog.New(handler))
 	ctrllog.SetLogger(logr.FromSlogHandler(handler))
 
-	// Load initial config.
+	// Load initial config from yaml file
 	cfg, err := scale.LoadConfig(*configPath)
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}
 	slog.Info("config loaded", "path", *configPath, "metrics", len(cfg.Metrics))
 
-	// Prometheus querier.
+	// Init Prometheus querier for querying metrics used for scaling decisions
 	querier, err := prometheusquery.NewPrometheusQuerier(*prometheusAddr)
 	if err != nil {
 		log.Fatalf("failed to create Prometheus querier: %v", err)
 	}
-
 	observer := scale.NewPrometheusMetricsObserver(querier)
 
-	// Kubernetes client with CNPG scheme.
+	// Kubernetes client with CNPG scheme registered, used for managing CNPG cluster and watching for changes
 	if err := cnpgv1.AddToScheme(scheme.Scheme); err != nil {
 		log.Fatalf("failed to register CNPG scheme: %v", err)
 	}
@@ -78,13 +74,12 @@ func main() {
 
 	cnpgClient := scale.NewCNPGClient(k8sClient, *namespace, *dbCluster)
 
-	// Build controller.
 	controller := scale.NewScaleController(cfg, observer, cnpgClient)
 
-	// Prometheus metrics server for the controller itself.
 	cm := scale.NewControllerMetrics(prometheus.DefaultRegisterer)
 	controller.WithMetrics(cm)
 	go func() {
+		// export controller metrics to monitor itself
 		mux := http.NewServeMux()
 		mux.Handle("/metrics", promhttp.Handler())
 		slog.Info("metrics server listening", "addr", *metricsAddr)
@@ -93,7 +88,6 @@ func main() {
 		}
 	}()
 
-	// Auto-wire predictor from config (type is selected via prediction.type in config.yaml).
 	if predictor, err := scale.BuildPredictor(cfg.Prediction); err != nil {
 		log.Fatalf("failed to build predictor: %v", err)
 	} else if predictor != nil {
@@ -103,7 +97,6 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Watch config file and hot-reload on change.
 	go scale.WatchConfig(ctx, *configPath, *watchInterval, func(newCfg scale.Config) {
 		controller.UpdateConfig(newCfg)
 	})

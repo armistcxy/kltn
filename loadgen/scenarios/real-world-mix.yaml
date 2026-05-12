@@ -1,35 +1,37 @@
 name: real_world_mix
 steps:
-  - duration: 120s
+  - duration: 180s
     rps: 50
 
-  - duration: 240s
+  - duration: 420s
     rps: 50
-    end_rps: 800
+    end_rps: 900
 
   - duration: 180s
-    rps: 800
+    rps: 900
+
+  - duration: 30s
+    rps: 1600
+  - duration: 180s
+    rps: 1600
 
   - duration: 60s
-    rps: 1800
+    rps: 1600
+    end_rps: 600
 
-  - duration: 120s
-    rps: 1800
+  - duration: 240s
+    rps: 600
 
-  - duration: 60s
-    rps: 1800
-    end_rps: 500
+  - duration: 210s
+    rps: 600
+    end_rps: 1300
 
-  - duration: 120s
-    rps: 500
+  - duration: 150s
+    rps: 1300
 
-  - duration: 120s
-    rps: 500
-    end_rps: 1150
-
-  - duration: 60s
-    rps: 1150
-
-  - duration: 120s
-    rps: 1150
+  - duration: 150s
+    rps: 1300
     end_rps: 50
+
+  - duration: 300s
+    rps: 50

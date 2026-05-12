@@ -1,29 +1,38 @@
 name: periodic_wave
 steps:
-  - duration: 180s
-    rps: 50
-
-  - duration: 180s
-    rps: 50
-    end_rps: 1550
-
   - duration: 120s
-    rps: 1550
+    rps: 100
 
-  - duration: 180s
-    rps: 1550
-    end_rps: 50
+  - duration: 150s
+    rps: 100
+    end_rps: 1100
+  - duration: 150s
+    rps: 1100
+  - duration: 150s
+    rps: 1100
+    end_rps: 100
+  - duration: 90s
+    rps: 100
 
-  - duration: 120s
-    rps: 50
+  - duration: 150s
+    rps: 100
+    end_rps: 1100
+  - duration: 150s
+    rps: 1100
+  - duration: 150s
+    rps: 1100
+    end_rps: 100
+  - duration: 90s
+    rps: 100
 
-  - duration: 180s
-    rps: 50
-    end_rps: 1550
+  - duration: 150s
+    rps: 100
+    end_rps: 1100
+  - duration: 150s
+    rps: 1100
+  - duration: 150s
+    rps: 1100
+    end_rps: 100
 
-  - duration: 120s
-    rps: 1550
-
-  - duration: 120s
-    rps: 1550
-    end_rps: 50
+  - duration: 90s
+    rps: 100

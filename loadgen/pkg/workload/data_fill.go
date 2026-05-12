@@ -20,24 +20,9 @@ func init() {
 	})
 }
 
-// DataFill grows a dedicated table at a controllable rate by inserting
-// fixed-size rows of incompressible random bytes. A fraction of calls
-// (BloatRate) perform UPDATEs instead, creating dead-tuple bloat that mimics
-// real production write patterns.
-//
-// Fill rate is deterministic: fill_rate = RPS × PayloadBytes
-//
-//	PayloadBytes=8192 (default 8 KB), RPS=100 → ~800 KB/s
-//	PayloadBytes=8192, RPS=400         → ~3.2 MB/s
-//
-// Use --scale-factor to multiply PayloadBytes:
-//
-//	sf=1: 8 KB/row  sf=4: 32 KB/row  sf=8: 64 KB/row
-//
-// Optional env var DATA_FILL_BLOAT_RATE (float64, [0,1), default 0.1) sets the
-// fraction of Execute calls that UPDATE an existing row instead of inserting.
+// DataFill grows a dedicated table at a controllable rate by inserting fixed-size rows of incompressible random bytes
 type DataFill struct {
-	PayloadBytes int // fixed row payload size in bytes; scaled by SetScaleFactor
+	PayloadBytes int // fixed row payload size in bytes (scaled by SetScaleFactor)
 	BloatRate    float64
 
 	tableHasRows atomic.Bool
@@ -46,8 +31,6 @@ type DataFill struct {
 
 func (w *DataFill) Name() string { return "data-fill" }
 
-// SetScaleFactor multiplies PayloadBytes by sf, satisfying the scaleSetter
-// interface in run.go. Must be called before Prepare/Execute.
 func (w *DataFill) SetScaleFactor(sf int) {
 	if sf < 1 {
 		sf = 1
@@ -55,8 +38,6 @@ func (w *DataFill) SetScaleFactor(sf int) {
 	w.PayloadBytes = 8192 * sf
 }
 
-// Prepare creates the fill_data table if absent, then seeds shared atomic state
-// from the current max id. Does NOT truncate — runs accumulate across invocations.
 func (w *DataFill) Prepare(ctx context.Context, pool *pgxpool.Pool) error {
 	conn, err := pool.Acquire(ctx)
 	if err != nil {
@@ -115,7 +96,6 @@ func (w *DataFill) doInsert(ctx context.Context, conn *pgxpool.Conn) error {
 		return fmt.Errorf("insert fill_data: %w", err)
 	}
 
-	// Write-if-greater: keep maxID monotonically increasing across concurrent inserts.
 	for {
 		cur := w.maxID.Load()
 		if newID <= cur {
@@ -158,8 +138,6 @@ func (w *DataFill) makePayload() ([]byte, error) {
 	return buf, nil
 }
 
-// parseBloatRate reads DATA_FILL_BLOAT_RATE from the environment.
-// Returns 0.1 if unset or invalid. Clamped to [0, 1).
 func parseBloatRate() float64 {
 	s := os.Getenv("DATA_FILL_BLOAT_RATE")
 	if s == "" {
