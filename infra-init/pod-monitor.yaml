@@ -10,3 +10,4 @@ spec:
       cnpg.io/cluster: pg-cluster
   podMetricsEndpoints:
   - port: metrics
+    interval: 10s
