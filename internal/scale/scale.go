@@ -24,7 +24,7 @@ type ScaleController struct {
 
 	observer   MetricsObserver
 	cnpgClient *CNPGClient
-	predictor  Predictor // nil → reactive only
+	predictor  Predictor          // nil → reactive only
 	metrics    *ControllerMetrics // nil → no metrics exported
 
 	// Rolling per-metric history, used by the predictor.
@@ -230,7 +230,7 @@ func (c *ScaleController) Decide(ctx context.Context, cfg Config, snapshot *Metr
 	case ScalingModeReactive:
 		target = reactiveTarget
 	case ScalingModePredictive:
-		if predictiveTarget == 0 {
+		if predictiveTarget == -1 {
 			// Prediction not ready — hold current replicas.
 			slog.Info("predictive mode: waiting for sufficient history")
 			target = current
@@ -238,7 +238,11 @@ func (c *ScaleController) Decide(ctx context.Context, cfg Config, snapshot *Metr
 			target = predictiveTarget
 		}
 	default: // ScalingModeHybrid
-		target = max(reactiveTarget, predictiveTarget)
+		if predictiveTarget == -1 {
+			target = reactiveTarget
+		} else {
+			target = max(reactiveTarget, predictiveTarget)
+		}
 	}
 	target = clamp(target, cfg.MinInstances, cfg.MaxInstances)
 
@@ -456,7 +460,7 @@ func (c *ScaleController) computePredictiveTarget(
 	history := c.getHistory(pred.MetricName)
 	if len(history) == 0 {
 		slog.Info("no history yet for prediction", "metric", pred.MetricName)
-		return current, nil
+		return -1, nil
 	}
 
 	// Guard: require a minimum amount of history before trusting the forecast.
@@ -468,7 +472,7 @@ func (c *ScaleController) computePredictiveTarget(
 				"have", age.Round(time.Second),
 				"need", pred.MinHistoryDuration,
 			)
-			return current, nil
+			return -1, nil
 		}
 	}
 
