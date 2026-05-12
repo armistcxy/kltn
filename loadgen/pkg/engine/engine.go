@@ -229,7 +229,7 @@ func (e *Engine) workerLoop(ctx context.Context, pool connPool, workerIdx int) {
 				select {
 				case <-ctx.Done():
 					return
-				case <-time.After(200 * time.Millisecond):
+				case <-time.After(5 * time.Second):
 				}
 				continue
 			}
