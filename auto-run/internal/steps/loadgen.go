@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	loadgenImage      = "zzzsleepzzz/loadgen:v2.30"
+	loadgenImage      = "zzzsleepzzz/loadgen:v2.33"
 	loadgenNamespace  = "default"
 	loadgenJobTimeout = 40 * time.Minute
 	loadgenPollPeriod = 10 * time.Second

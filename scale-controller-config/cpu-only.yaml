@@ -2,7 +2,7 @@ minInstances: 1
 maxInstances: 5
 pollInterval: 30s
 cooldown: 30s
-scaleDownStabilizationWindow: 75s
+scaleDownStabilizationWindow: 50s
 scalingMode: reactive
 aggregation: max
 
@@ -13,5 +13,5 @@ metrics:
         namespace="default",
         pod=~"pg-cluster-.*",
         container="postgres"
-      }[3m]))
-    targetValuePerReplica: 1.7
+      }[90s]))
+    targetValuePerReplica: 1.6

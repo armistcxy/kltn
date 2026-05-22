@@ -2,22 +2,20 @@ minInstances: 1
 maxInstances: 5
 pollInterval: 15s
 cooldown: 30s
-scaleDownStabilizationWindow: 75s
+scaleDownStabilizationWindow: 50s
 aggregation: max
 scalingMode: reactive
 
 metrics:
-  - name: backends
-    query: 'avg_over_time(sum(cnpg_backends_total{namespace="default", pod=~"pg-cluster-.*", state="active", usename="app"})[2m:15s])'
-    scaleDownThreshold: 8
-    targetValuePerReplica: 15
-    scaleDownGuard: true
+  - name: tps
+    query: |
+      sum(rate(cnpg_pg_tps_xact_commit[90s])) + sum(rate(cnpg_pg_tps_xact_rollback[90s]))
+    targetValuePerReplica: 390
+    scaleDownGuard: false
 
   - name: avg_latency
     query: |
-      sum(rate(cnpg_pg_stat_statements_total_exec_time_seconds{namespace="default", pod=~"pg-cluster-.*"}[3m]))
-      /
-      sum(rate(cnpg_pg_stat_statements_calls{namespace="default", pod=~"pg-cluster-.*"}[3m]))
+      sum(rate(cnpg_pg_statements_aggregate_total_exec_time_seconds[3m])) / sum(rate(cnpg_pg_statements_aggregate_calls[3m]))
     scaleUpThreshold: 0.15
     scaleDownThreshold: 0.02
     scaleUpOnly: true

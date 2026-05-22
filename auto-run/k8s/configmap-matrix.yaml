@@ -15,66 +15,157 @@ data:
       worker_node: "gke-auto-scaling-lab-default-pool-ba812d2f-pflx"
 
     runs:
-      # ── gradual-ramp ──────────────────────────────────────────────
-      - id: hybrid-gradual-ramp
-        config: scale-controller-config/hybrid.yaml
-        scenario: loadgen/scenarios/gradual-ramp.yaml
-        tags: [thesis-eval, hybrid]
+      # # ── gradual-ramp ──────────────────────────────────────────────
+      # - id: predictive-gradual-ramp-1
+      #   config: scale-controller-config/predictive-only.yaml
+      #   scenario: loadgen/scenarios/gradual-ramp.yaml
+      #   tags: [thesis-eval, predictive]
 
-      - id: predictive-gradual-ramp
-        config: scale-controller-config/predictive-only.yaml
-        scenario: loadgen/scenarios/gradual-ramp.yaml
-        tags: [thesis-eval, predictive]
+      # - id: predictive-gradual-ramp-2
+      #   config: scale-controller-config/predictive-only.yaml
+      #   scenario: loadgen/scenarios/gradual-ramp.yaml
+      #   tags: [thesis-eval, predictive]
 
-      - id: reactive-gradual-ramp
-        config: scale-controller-config/reactive-only.yaml
-        scenario: loadgen/scenarios/gradual-ramp.yaml
-        tags: [thesis-eval, reactive]
+      # - id: reactive-gradual-ramp-1
+      #   config: scale-controller-config/reactive-only.yaml
+      #   scenario: loadgen/scenarios/gradual-ramp.yaml
+      #   tags: [thesis-eval, reactive]
+      
+      # - id: reactive-gradual-ramp-2
+      #   config: scale-controller-config/reactive-only.yaml
+      #   scenario: loadgen/scenarios/gradual-ramp.yaml
+      #   tags: [thesis-eval, reactive]
 
-      # ── sudden-spike ──────────────────────────────────────────────
-      - id: hybrid-sudden-spike
-        config: scale-controller-config/hybrid.yaml
-        scenario: loadgen/scenarios/sudden-spike.yaml
-        tags: [thesis-eval, hybrid]
-
-      - id: predictive-sudden-spike
-        config: scale-controller-config/predictive-only.yaml
-        scenario: loadgen/scenarios/sudden-spike.yaml
-        tags: [thesis-eval, predictive]
-
-      - id: reactive-sudden-spike
-        config: scale-controller-config/reactive-only.yaml
-        scenario: loadgen/scenarios/sudden-spike.yaml
-        tags: [thesis-eval, reactive]
+      # - id: hybrid-gradual-ramp-1
+      #   config: scale-controller-config/hybrid.yaml
+      #   scenario: loadgen/scenarios/gradual-ramp.yaml
+      #   tags: [thesis-eval, hybrid]
+      
+      # - id: hybrid-gradual-ramp-2
+      #   config: scale-controller-config/hybrid.yaml
+      #   scenario: loadgen/scenarios/gradual-ramp.yaml
+      #   tags: [thesis-eval, hybrid]
+      
+      # - id: hybrid-gradual-ramp-3
+      #   config: scale-controller-config/hybrid.yaml
+      #   scenario: loadgen/scenarios/gradual-ramp.yaml
+      #   tags: [thesis-eval, hybrid]
 
       # ── periodic-wave ─────────────────────────────────────────────
-      - id: hybrid-periodic-wave
-        config: scale-controller-config/hybrid.yaml
-        scenario: loadgen/scenarios/periodic-wave.yaml
-        tags: [thesis-eval, hybrid]
 
-      - id: predictive-periodic-wave
-        config: scale-controller-config/predictive-only.yaml
-        scenario: loadgen/scenarios/periodic-wave.yaml
-        tags: [thesis-eval, predictive]
+      # - id: predictive-periodic-wave-1
+      #   config: scale-controller-config/predictive-only.yaml
+      #   scenario: loadgen/scenarios/periodic-wave.yaml
+      #   tags: [thesis-eval, predictive]
 
-      - id: reactive-periodic-wave
-        config: scale-controller-config/reactive-only.yaml
-        scenario: loadgen/scenarios/periodic-wave.yaml
-        tags: [thesis-eval, reactive]
+      # - id: predictive-periodic-wave-2
+      #   config: scale-controller-config/predictive-only.yaml
+      #   scenario: loadgen/scenarios/periodic-wave.yaml
+      #   tags: [thesis-eval, predictive]
+
+      # - id: reactive-periodic-wave-1
+      #   config: scale-controller-config/reactive-only.yaml
+      #   scenario: loadgen/scenarios/periodic-wave.yaml
+      #   tags: [thesis-eval, reactive]
+
+      # - id: reactive-periodic-wave-2
+      #   config: scale-controller-config/reactive-only.yaml
+      #   scenario: loadgen/scenarios/periodic-wave.yaml
+      #   tags: [thesis-eval, reactive]
+
+      # - id: hybrid-periodic-wave-1
+      #   config: scale-controller-config/hybrid.yaml
+      #   scenario: loadgen/scenarios/periodic-wave.yaml
+      #   tags: [thesis-eval, hybrid]
+
+      # - id: hybrid-periodic-wave-2
+      #   config: scale-controller-config/hybrid.yaml
+      #   scenario: loadgen/scenarios/periodic-wave.yaml
+      #   tags: [thesis-eval, hybrid]
+
+      # - id: hybrid-periodic-wave-3
+      #   config: scale-controller-config/hybrid.yaml
+      #   scenario: loadgen/scenarios/periodic-wave.yaml
+      #   tags: [thesis-eval, hybrid]
+
+      # # ── sudden-spike ──────────────────────────────────────────────
+      # - id: hybrid-sudden-spike-1
+      #   config: scale-controller-config/hybrid.yaml
+      #   scenario: loadgen/scenarios/sudden-spike.yaml
+      #   tags: [thesis-eval, hybrid]
+
+      # - id: hybrid-sudden-spike-2
+      #   config: scale-controller-config/hybrid.yaml
+      #   scenario: loadgen/scenarios/sudden-spike.yaml
+      #   tags: [thesis-eval, hybrid]
+
+      # - id: hybrid-sudden-spike-3
+      #   config: scale-controller-config/hybrid.yaml
+      #   scenario: loadgen/scenarios/sudden-spike.yaml
+      #   tags: [thesis-eval, hybrid]
+
+      # - id: predictive-sudden-spike-1
+      #   config: scale-controller-config/predictive-only.yaml
+      #   scenario: loadgen/scenarios/sudden-spike.yaml
+      #   tags: [thesis-eval, predictive]
+
+      # - id: predictive-sudden-spike-2
+      #   config: scale-controller-config/predictive-only.yaml
+      #   scenario: loadgen/scenarios/sudden-spike.yaml
+      #   tags: [thesis-eval, predictive]
+
+      # - id: predictive-sudden-spike-3
+      #   config: scale-controller-config/predictive-only.yaml
+      #   scenario: loadgen/scenarios/sudden-spike.yaml
+      #   tags: [thesis-eval, predictive]
+
+      # - id: reactive-sudden-spike-1
+      #   config: scale-controller-config/reactive-only.yaml
+      #   scenario: loadgen/scenarios/sudden-spike.yaml
+      #   tags: [thesis-eval, reactive]
+
+      # - id: reactive-sudden-spike-2
+      #   config: scale-controller-config/reactive-only.yaml
+      #   scenario: loadgen/scenarios/sudden-spike.yaml
+      #   tags: [thesis-eval, reactive]
+
+      # - id: reactive-sudden-spike-3
+      #   config: scale-controller-config/reactive-only.yaml
+      #   scenario: loadgen/scenarios/sudden-spike.yaml
+      #   tags: [thesis-eval, reactive]
 
       # ── real-world-mix ────────────────────────────────────────────
-      - id: hybrid-real-world-mix
+      # - id: hybrid-real-world-mix-1
+      #   config: scale-controller-config/hybrid.yaml
+      #   scenario: loadgen/scenarios/real-world-mix.yaml
+      #   tags: [thesis-eval, hybrid]
+      
+      - id: hybrid-real-world-mix-2
         config: scale-controller-config/hybrid.yaml
         scenario: loadgen/scenarios/real-world-mix.yaml
         tags: [thesis-eval, hybrid]
 
-      - id: predictive-real-world-mix
+      - id: hybrid-real-world-mix-3
+        config: scale-controller-config/hybrid.yaml
+        scenario: loadgen/scenarios/real-world-mix.yaml
+        tags: [thesis-eval, hybrid]
+
+      - id: predictive-real-world-mix-2
         config: scale-controller-config/predictive-only.yaml
         scenario: loadgen/scenarios/real-world-mix.yaml
         tags: [thesis-eval, predictive]
 
-      - id: reactive-real-world-mix
+      - id: reactive-real-world-mix-2
+        config: scale-controller-config/reactive-only.yaml
+        scenario: loadgen/scenarios/real-world-mix.yaml
+        tags: [thesis-eval, reactive]
+
+      - id: predictive-real-world-mix-3
+        config: scale-controller-config/predictive-only.yaml
+        scenario: loadgen/scenarios/real-world-mix.yaml
+        tags: [thesis-eval, predictive]
+
+      - id: reactive-real-world-mix-3
         config: scale-controller-config/reactive-only.yaml
         scenario: loadgen/scenarios/real-world-mix.yaml
         tags: [thesis-eval, reactive]

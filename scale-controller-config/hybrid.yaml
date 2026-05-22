@@ -3,21 +3,13 @@ maxInstances: 5
 pollInterval: 15s
 cooldown: 30s
 aggregation: max
-scaleDownStabilizationWindow: 75s
+scaleDownStabilizationWindow: 50s
 scalingMode: hybrid
 
 metrics:
-  - name: backends
-    query: 'avg_over_time(sum(cnpg_backends_total{namespace="default", pod=~"pg-cluster-.*", state="active", usename="app"})[2m:15s]) OR vector(0)'
-    scaleDownThreshold: 8
-    targetValuePerReplica: 15
-    scaleDownGuard: true
-
   - name: avg_latency
     query: |
-      sum(rate(cnpg_pg_stat_statements_total_exec_time_seconds{namespace="default", pod=~"pg-cluster-.*"}[3m]))
-      /
-      sum(rate(cnpg_pg_stat_statements_calls{namespace="default", pod=~"pg-cluster-.*"}[3m]))
+      sum(rate(cnpg_pg_statements_aggregate_total_exec_time_seconds[3m])) / sum(rate(cnpg_pg_statements_aggregate_calls[3m]))
     scaleUpThreshold: 0.15
     scaleDownThreshold: 0.02
     scaleUpOnly: true
@@ -25,9 +17,8 @@ metrics:
 
   - name: tps
     query: |
-      sum(rate(cnpg_pg_stat_database_xact_commit{namespace="default", pod=~"pg-cluster-.*"}[2m]))
-      + sum(rate(cnpg_pg_stat_database_xact_rollback{namespace="default", pod=~"pg-cluster-.*"}[2m]))
-    targetValuePerReplica: 400
+      sum(rate(cnpg_pg_tps_xact_commit[90s])) + sum(rate(cnpg_pg_tps_xact_rollback[90s]))
+    targetValuePerReplica: 390
     scaleDownGuard: false
 
 prediction:
@@ -35,9 +26,9 @@ prediction:
   type: holtwinters
   metricName: tps
   horizon: 2m
-  minHistoryDuration: 21m
+  minHistoryDuration: 20m
   holtwinters:
     alpha: 0.4
-    beta: 0.3
+    beta: 0.25
     gamma: 0.2
     seasonLength: 40   # 600s cycle / 15s pollInterval
