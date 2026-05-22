@@ -145,6 +145,112 @@ Available scenarios:
 | `storage_migration` | Data ingestion pattern simulating a migration |
 
 
+## How to run
+
+The experiment was conducted on **Google Cloud Platform** using GKE. All `make` commands below run from `hack/spin-up/`.
+
+### Prerequisites
+
+- `gcloud` CLI authenticated and a GCP project set as default
+- `kubectl`, `helm`
+- Go 1.25+ (for building controllers locally)
+
+### 1. Provision the GKE cluster
+
+```bash
+cd hack/spin-up
+make init-setup-gke PROJECT_ID=<your-project-id>
+```
+
+This single target runs the full setup sequence:
+
+1. Creates a GKE cluster with a `default-pool` node (for loadgen) and a `pg-pool` of 5 nodes (for database instances)
+2. Installs the CNPG operator
+3. Installs the Prometheus stack (kube-prometheus-stack via Helm)
+4. Enables the GCE CSI driver and VolumeSnapshot controller
+5. Provisions a GCS bucket, a Google Service Account for WAL archiving, and wires Workload Identity
+6. Installs the Barman Cloud plugin for CNPG
+7. Applies the CNPG `Cluster`, `ObjectStore`, `ScheduledBackup`, and monitoring manifests
+8. Initializes pgbench data at scale factor 50
+
+Grafana is available on port 3000 after running:
+
+```bash
+make grafana-forward
+```
+
+### 2. Build the controllers
+
+```bash
+# Instance-scaling controller
+go build -o scale-controller ./cmd/scale-controller
+
+# Storage-scaling controller
+go build -o storage-controller ./cmd/storage-controller
+```
+
+### 3. Run the instance-scaling controller
+
+The controller reads configuration from a YAML file and watches it for live changes.
+
+```bash
+./scale-controller \
+  --config=scale-controller-config/hybrid.yaml \
+  --prometheus-addr=http://localhost:9090 \
+  --namespace=default \
+  --db-cluster=pg-cluster \
+  --watch-interval=10s \
+  --metrics-addr=:9091
+```
+
+Pre-built configuration profiles are in `scale-controller-config/`:
+
+| Profile | Description |
+|---|---|
+| `hybrid.yaml` | Holt-Winters prediction + reactive SLO guard (default experiment config) |
+| `reactive-only.yaml` | Reactive-only, no predictor |
+| `predictive-only.yaml` | Predictive-only, falls back to current replicas when history is insufficient |
+
+### 4. Run the storage-scaling controller
+
+```bash
+./storage-controller \
+  --config=config.storage-example.yaml \
+  --prometheus-addr=http://localhost:9090 \
+  --namespace=default \
+  --db-cluster=pg-cluster
+```
+
+### 5. Run a load scenario
+
+```bash
+cd loadgen
+go run ./cmd/loadgen run \
+  --scenario=scenarios/real-world-mix.yaml \
+  --db-url="postgres://app:password@<cluster-rw-ip>/app" \
+  --concurrency=100
+```
+
+### 6. Auto-run benchmark harness (optional)
+
+For unattended overnight benchmark runs, deploy the auto-run server into the cluster:
+
+```bash
+kubectl apply -f auto-run/k8s/rbac.yaml
+kubectl apply -f auto-run/k8s/configmap-matrix.yaml
+kubectl apply -f auto-run/k8s/deployment.yaml
+kubectl apply -f auto-run/k8s/service.yaml
+```
+
+Edit the run matrix via the web UI:
+
+```bash
+kubectl port-forward svc/auto-run 8080:8080
+# open http://localhost:8080
+```
+
+The matrix defines which controller config and scenario to pair for each run. The harness executes them sequentially - reset cluster, deploy controller, run loadgen, collect metrics from Prometheus as CSV, upload to GCS - without any manual intervention.
+
 ## Tech Stack
 
 | Component | Version | Role |
