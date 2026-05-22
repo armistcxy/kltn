@@ -2,8 +2,6 @@ package scale
 
 import "fmt"
 
-// BuildPredictor constructs the Predictor described by cfg.
-// Returns (nil, nil) when cfg is nil or prediction is disabled.
 func BuildPredictor(cfg *PredictionConfig) (Predictor, error) {
 	if cfg == nil || !cfg.Enabled {
 		return nil, nil
@@ -18,7 +16,6 @@ func BuildPredictor(cfg *PredictionConfig) (Predictor, error) {
 		return NewMovingAveragePredictor(window), nil
 
 	case PredictorEWMA:
-		// Validated by config loader, but guard defensively.
 		if cfg.EWMA == nil {
 			return nil, fmt.Errorf("predictor type %q requires an ewma config block", cfg.Type)
 		}
@@ -38,7 +35,7 @@ func BuildPredictor(cfg *PredictionConfig) (Predictor, error) {
 		hw := cfg.HoltWinters
 		seasonLength := hw.SeasonLength
 		if seasonLength < 2 {
-			seasonLength = 10 // safe default; warn via log if needed
+			seasonLength = 10
 		}
 		return NewHoltWintersPredictor(hw.Alpha, hw.Beta, hw.Gamma, seasonLength)
 

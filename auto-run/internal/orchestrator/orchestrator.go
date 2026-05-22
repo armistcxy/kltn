@@ -348,7 +348,7 @@ func gitCommit(repoRoot string) string {
 }
 
 func redactPassword(dsn string) string {
-	// postgres://user:password@host/db → postgres://user:***@host/db
+	// postgres://user:password@host/db -> postgres://user:***@host/db
 	if i := strings.Index(dsn, "://"); i >= 0 {
 		rest := dsn[i+3:]
 		if at := strings.LastIndex(rest, "@"); at >= 0 {

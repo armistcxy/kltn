@@ -26,16 +26,12 @@ var (
 		Help: "Unix timestamp of the last storage resize patch (seconds).",
 	}, []string{"target"})
 
-	// storageResizeLatency is updated asynchronously when PVC expansion is confirmed.
 	storageResizeLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "storage_resize_latency_seconds",
 		Help:    "Time from CNPG CR patch to PVC status.capacity.storage confirmed (seconds).",
 		Buckets: []float64{5, 15, 30, 60, 120, 300, 600},
 	}, []string{"target"})
 
-	// pgdataRiskWindowSeconds measures the risk window per resize event: seconds from the most
-	// recent ScaleUpThreshold upward crossing to the moment PVC expansion is confirmed.
-	// Observes 0 when preemptive fired before threshold was ever crossed (no risk window).
 	pgdataRiskWindowSeconds = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name:    "storage_pgdata_risk_window_seconds",
 		Help:    "Seconds from last ScaleUpThreshold crossing to PVC resize completion. 0 when preemptive fired before threshold.",

@@ -9,11 +9,10 @@ import (
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// CNPGClient interacts with CNPG Cluster.
+// CNPGClient interacts with CNPG Cluster
 type CNPGClient struct {
 	k8sClient ctrlclient.Client
 
-	// Target CNPG Cluster
 	namespace string
 	cluster   string
 }
@@ -26,7 +25,6 @@ func NewCNPGClient(k8sClient ctrlclient.Client, namespace, cluster string) *CNPG
 	}
 }
 
-// GetCurrentInstances returns current spec.instances of the CNPG Cluster.
 func (c *CNPGClient) GetCurrentInstances(ctx context.Context) (int, error) {
 	var cluster cnpgv1.Cluster
 	if err := c.k8sClient.Get(ctx, types.NamespacedName{
@@ -39,7 +37,6 @@ func (c *CNPGClient) GetCurrentInstances(ctx context.Context) (int, error) {
 	return int(cluster.Spec.Instances), nil
 }
 
-// PatchInstances patches spec.instances to new value.
 func (c *CNPGClient) PatchInstances(ctx context.Context, instances int) error {
 	var cluster cnpgv1.Cluster
 	if err := c.k8sClient.Get(ctx, types.NamespacedName{

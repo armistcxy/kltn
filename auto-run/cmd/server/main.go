@@ -120,7 +120,7 @@ func main() {
 
 	go func() {
 		slog.Info("HTTP server listening", "addr", *addr)
-		fmt.Printf("\n  Web UI → http://localhost%s\n\n", *addr)
+		fmt.Printf("\n  Web UI -> http://localhost%s\n\n", *addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("HTTP server", "err", err)
 			os.Exit(1)

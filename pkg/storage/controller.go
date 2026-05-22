@@ -11,42 +11,33 @@ import (
 	"time"
 )
 
-// Controller is the storage autoscaling control loop: Observe → Decide → Act → Confirm.
-// It runs independently from the instance ScaleController.
+// Controller is the storage autoscaling control loop: Observe -> Decide -> Act
 type Controller struct {
 	cfg      Config
 	observer *Observer
 	decider  *Decider
 	actor    *Actor
 
-	rootCtx context.Context // set in Run(); used by confirmation goroutines
-
+	rootCtx            context.Context
 	lastPGDataResizeAt time.Time
 	lastWALResizeAt    time.Time
 
-	// mu protects tPGDataThresholdCrossed and pgdataAboveThreshold which are written by
-	// reconcileOnce and read+reset by confirmation goroutines.
 	mu sync.Mutex
 
 	// tPGDataThresholdCrossed records when pgdata usage most recently crossed scaleUpThreshold
-	// upward (below → above) in the current resize cycle. Zero means threshold not yet crossed.
-	// Updated on every upward edge (not just the first), so oscillating usage tracks the latest
-	// crossing. Reset by the confirmation goroutine after each PVC expansion.
 	tPGDataThresholdCrossed time.Time
 
-	// pgdataAboveThreshold is the threshold state observed in the previous reconcile cycle.
-	// Used to detect upward edge crossings (false → true transitions).
+	// pgdataAboveThreshold is the threshold state observed in the previous reconcile cycle
 	pgdataAboveThreshold bool
 
-	// pgDataRiskWindowTotalMs accumulates risk_window across all resize cycles (ms).
-	// pgDataResizeCount and pgDataResizeLatencyTotalMs track resize latency for averaging.
-	// Written from confirmation goroutines; use atomics to avoid mutex.
-	pgDataRiskWindowTotalMs    atomic.Int64
+	// pgDataRiskWindowTotalMs accumulates risk_window across all resize cycles (ms)
+	pgDataRiskWindowTotalMs atomic.Int64
+
+	// pgDataResizeCount and pgDataResizeLatencyTotalMs track resize latency for averaging
 	pgDataResizeCount          atomic.Int64
 	pgDataResizeLatencyTotalMs atomic.Int64
 }
 
-// NewController creates a storage Controller with all dependencies wired.
 func NewController(cfg Config, observer *Observer, decider *Decider, actor *Actor) *Controller {
 	return &Controller{
 		cfg:      cfg,
@@ -56,7 +47,6 @@ func NewController(cfg Config, observer *Observer, decider *Decider, actor *Acto
 	}
 }
 
-// Run starts the reconcile loop and blocks until ctx is cancelled.
 func (c *Controller) Run(ctx context.Context) error {
 	c.rootCtx = ctx
 	slog.Info("storage controller started",
@@ -80,9 +70,7 @@ func (c *Controller) Run(ctx context.Context) error {
 	}
 }
 
-// reconcileOnce executes one full Observe → Decide → Act cycle.
 func (c *Controller) reconcileOnce(ctx context.Context) error {
-	// Observe
 	snap, err := c.observer.Observe(ctx, c.cfg)
 	if err != nil {
 		return fmt.Errorf("observe: %w", err)
@@ -99,9 +87,6 @@ func (c *Controller) reconcileOnce(ctx context.Context) error {
 		"wal_size", snap.CurrentWALSize,
 	)
 
-	// Track most recent upward threshold crossing. Updates tPGDataThresholdCrossed on every
-	// false→true edge so oscillating usage always reflects the latest crossing, not the first.
-	// Reset by the confirmation goroutine after PVC expansion completes.
 	if !math.IsNaN(snap.PGDataUsagePercent) {
 		currentlyAbove := snap.PGDataUsagePercent >= c.cfg.PGData.ScaleUpThresholdPercent
 		c.mu.Lock()
@@ -119,7 +104,6 @@ func (c *Controller) reconcileOnce(ctx context.Context) error {
 		c.pgdataAboveThreshold = currentlyAbove
 	}
 
-	// Update state gauges.
 	if !math.IsNaN(snap.PGDataUsagePercent) {
 		pgdataUsagePercent.Set(snap.PGDataUsagePercent)
 	}
@@ -130,7 +114,6 @@ func (c *Controller) reconcileOnce(ctx context.Context) error {
 		walUsagePercent.Set(snap.WALUsageRatio * 100)
 	}
 
-	// Decide + Act: PGDATA
 	pgDataDecision := c.decider.DecidePGData(snap, c.cfg.PGData, c.cfg.SafetyGuards, c.lastPGDataResizeAt)
 	slog.Info("pgdata decision",
 		"should_resize", pgDataDecision.ShouldResize,
@@ -170,9 +153,6 @@ func (c *Controller) reconcileOnce(ctx context.Context) error {
 
 				tConfirmed := time.Now()
 
-				// Read and reset tPGDataThresholdCrossed atomically.
-				// Must be done here (not at trigger time) because the threshold may be
-				// crossed during the propagation window between trigger and confirmation.
 				c.mu.Lock()
 				thresholdCrossedAt := c.tPGDataThresholdCrossed
 				c.tPGDataThresholdCrossed = time.Time{}
@@ -205,7 +185,6 @@ func (c *Controller) reconcileOnce(ctx context.Context) error {
 		}
 	}
 
-	// Decide + Act: WAL
 	walDecision := c.decider.DecideWAL(snap, c.cfg.WAL, c.cfg.SafetyGuards, c.lastWALResizeAt)
 	slog.Info("wal decision",
 		"should_resize", walDecision.ShouldResize,

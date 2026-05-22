@@ -30,7 +30,7 @@ const (
 // Checklist reference:
 //  1. Zero maxSyncReplicas before patching — prevents controller from reverting
 //     the patch when instances < maxSyncReplicas+1.
-//  2. On timeout: patch dangling PVCs (cnpg.io/pvcStatus=initializing → ready)
+//  2. On timeout: patch dangling PVCs (cnpg.io/pvcStatus=initializing -> ready)
 //     so the CNPG controller can create the pod and self-heal.
 //  3. On timeout: delete stuck recovery jobs (0/1 Completed) so CNPG is unblocked.
 func ResetCluster(ctx context.Context, rc *RunContext) error {
@@ -47,7 +47,7 @@ func ResetCluster(ctx context.Context, rc *RunContext) error {
 	if err := patchInstances(ctx, rc, 1); err != nil {
 		return fmt.Errorf("patch cluster instances: %w", err)
 	}
-	rc.Logf("[%s] cluster patched → 1 instance; waiting for pods", stepName)
+	rc.Logf("[%s] cluster patched -> 1 instance; waiting for pods", stepName)
 
 	if err := waitForRunningPods(ctx, rc, stepName, 1, resetTimeout); err == nil {
 		rc.Logf("[%s] cluster reset complete", stepName)

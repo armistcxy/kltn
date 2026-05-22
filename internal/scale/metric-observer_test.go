@@ -9,7 +9,6 @@ import (
 	prometheusquery "github.com/armistcxy/kltn/pkg/prometheus-query"
 )
 
-// testSpecs returns a sample MetricSpec list pointing at a real CNPG cluster.
 func testSpecs() []MetricSpec {
 	return []MetricSpec{
 		{
@@ -43,8 +42,6 @@ func newTestObserver(t *testing.T) *PrometheusMetricsObserver {
 	return NewPrometheusMetricsObserver(querier)
 }
 
-// TestPrometheusMetricsObserver_Integration tests the observer against a real Prometheus.
-// Run with: PROMETHEUS_ADDR="http://localhost:9090" go test ./internal/scale -v -run TestPrometheusMetricsObserver_Integration
 func TestPrometheusMetricsObserver_Integration(t *testing.T) {
 	observer := newTestObserver(t)
 	specs := testSpecs()
@@ -71,7 +68,6 @@ func TestPrometheusMetricsObserver_Integration(t *testing.T) {
 	}
 }
 
-// TestPrometheusMetricsObserver_Timeout verifies that context cancellation is respected.
 func TestPrometheusMetricsObserver_Timeout(t *testing.T) {
 	observer := newTestObserver(t)
 	specs := testSpecs()
@@ -87,7 +83,6 @@ func TestPrometheusMetricsObserver_Timeout(t *testing.T) {
 	}
 }
 
-// TestPrometheusMetricsObserver_MultipleObserves tests successive calls return consistent snapshots.
 func TestPrometheusMetricsObserver_MultipleObserves(t *testing.T) {
 	observer := newTestObserver(t)
 	specs := testSpecs()

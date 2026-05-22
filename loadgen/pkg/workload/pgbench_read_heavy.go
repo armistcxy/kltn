@@ -18,21 +18,15 @@ func init() {
 
 // PgbenchReadHeavy is a read-only workload that mixes three query types
 type PgbenchReadHeavy struct {
-	ScaleFactor int
-
-	// Derived in Prepare() from ScaleFactor and pgbench schema invariants.
-	// Fields are unexported because callers should set only ScaleFactor.
+	ScaleFactor   int
 	totalAccounts int // accountsPerBranch * ScaleFactor
-	scanSize      int // accountsPerBranch / 20  → 5% of one branch  (5,000 rows at sf=1)
-	aggSize       int // accountsPerBranch / 5   → 20% of one branch (20,000 rows at sf=1)
+	scanSize      int // accountsPerBranch / 20 -> 5% of one branch (5,000 rows at sf=1)
+	aggSize       int // accountsPerBranch / 5 -> 20% of one branch (20,000 rows at sf=1)
 }
 
-func (w *PgbenchReadHeavy) Name() string { return "pgbench-read-heavy" }
-
+func (w *PgbenchReadHeavy) Name() string          { return "pgbench-read-heavy" }
 func (w *PgbenchReadHeavy) SetScaleFactor(sf int) { w.ScaleFactor = sf }
 
-// Prepare auto-detects the scale factor from the DB when not explicitly set
-// then computes all derived query parameters from the pgbench schema invariants.
 func (w *PgbenchReadHeavy) Prepare(ctx context.Context, pool *pgxpool.Pool) error {
 	if w.ScaleFactor <= 1 {
 		conn, err := pool.Acquire(ctx)
@@ -112,8 +106,7 @@ func (w *PgbenchReadHeavy) branchRangeReport(ctx context.Context, conn *pgxpool.
 	return rows.Err()
 }
 
-// branchFinancialSummary simulates a manager reviewing financial statistics for
-// a contiguous block of accounts (20% of one branch)
+// branchFinancialSummary simulates a manager reviewing financial statistics for a contiguous block of accounts (20% of one branch)
 func (w *PgbenchReadHeavy) branchFinancialSummary(ctx context.Context, conn *pgxpool.Conn) error {
 	startAID := rand.Intn(w.totalAccounts-w.aggSize) + 1
 

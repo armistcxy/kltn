@@ -2,36 +2,17 @@ package scale
 
 import "github.com/prometheus/client_golang/prometheus"
 
-// ControllerMetrics holds the Prometheus metrics exported by the ScaleController.
-// Group 1: Observer Input Metrics.
-// Group 2: Controller Decision Metrics.
+// ControllerMetrics holds the Prometheus metrics exported by the ScaleController
 type ControllerMetrics struct {
-	// Group 1: Observer Input Metrics
-
-	// observerRawValue is the instantaneous value fetched from Prometheus on the last poll.
 	observerRawValue *prometheus.GaugeVec
-
-	// observerAvgValue is the moving average of the metric across the full rolling history buffer.
-	// This line will appear smoother than observerRawValue in Grafana, demonstrating noise filtering.
 	observerAvgValue *prometheus.GaugeVec
 
-	// Group 2: Controller Decision Metrics
-
-	// instancesCurrent is the number of replicas currently running in the CNPG cluster.
-	instancesCurrent prometheus.Gauge
-
-	// instancesTargetReactive is the desired replica count computed purely from current load (reactive logic).
-	instancesTargetReactive prometheus.Gauge
-
-	// instancesTargetPredictive is the desired replica count computed by the Predictor (future load).
+	instancesCurrent          prometheus.Gauge
+	instancesTargetReactive   prometheus.Gauge
 	instancesTargetPredictive prometheus.Gauge
-
-	// instancesTargetFinal is the final replica count after Max(reactive, predictive) and clamping to [min, max].
-	instancesTargetFinal prometheus.Gauge
+	instancesTargetFinal      prometheus.Gauge
 }
 
-// NewControllerMetrics creates and registers all controller metrics against reg.
-// Pass prometheus.DefaultRegisterer for the standard global registry.
 func NewControllerMetrics(reg prometheus.Registerer) *ControllerMetrics {
 	m := &ControllerMetrics{
 		observerRawValue: prometheus.NewGaugeVec(prometheus.GaugeOpts{

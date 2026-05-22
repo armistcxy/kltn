@@ -13,17 +13,13 @@ import (
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// Actor applies storage resize decisions by patching the CNPG Cluster CR.
-//
-// It never patches PVCs directly , all changes go through spec.storage.size
-// and spec.walStorage.size so CNPG can reconcile safely.
+// Actor applies storage resize decisions by patching the CNPG Cluster CR
 type Actor struct {
 	k8sClient ctrlclient.Client
 	namespace string
 	cluster   string
 }
 
-// NewActor creates an Actor targeting the given CNPG cluster.
 func NewActor(k8sClient ctrlclient.Client, namespace, cluster string) *Actor {
 	return &Actor{
 		k8sClient: k8sClient,
@@ -33,8 +29,6 @@ func NewActor(k8sClient ctrlclient.Client, namespace, cluster string) *Actor {
 }
 
 // ResizePGData patches spec.storage.size on the CNPG Cluster CR.
-//
-// newSize must be a valid Kubernetes resource quantity string (e.g. "15Gi").
 func (a *Actor) ResizePGData(ctx context.Context, newSize string) error {
 	var cl cnpgv1.Cluster
 	if err := a.k8sClient.Get(ctx, types.NamespacedName{
@@ -53,12 +47,6 @@ func (a *Actor) ResizePGData(ctx context.Context, newSize string) error {
 	return nil
 }
 
-// WaitForPVCExpansion polls PVCs belonging to the cluster until all of them report
-// status.capacity.storage >= targetSize. The role parameter selects which PVCs to watch:
-// use "PG_DATA" for PGDATA volumes and "PG_WAL" for WAL volumes.
-//
-// Returns the elapsed duration from the call until confirmation, or an error if ctx expires.
-// Polling uses a simple back-off: 2 s initial, doubling up to 30 s max.
 func (a *Actor) WaitForPVCExpansion(ctx context.Context, role string, targetSize string) (time.Duration, error) {
 	target, err := resource.ParseQuantity(targetSize)
 	if err != nil {
@@ -66,7 +54,7 @@ func (a *Actor) WaitForPVCExpansion(ctx context.Context, role string, targetSize
 	}
 
 	sel := labels.SelectorFromSet(labels.Set{
-		"cnpg.io/cluster":  a.cluster,
+		"cnpg.io/cluster": a.cluster,
 		"cnpg.io/pvcRole": role,
 	})
 
@@ -111,8 +99,6 @@ func (a *Actor) WaitForPVCExpansion(ctx context.Context, role string, targetSize
 }
 
 // ResizeWAL patches spec.walStorage.size on the CNPG Cluster CR.
-//
-// Returns an error if the cluster has no dedicated walStorage configured.
 func (a *Actor) ResizeWAL(ctx context.Context, newSize string) error {
 	var cl cnpgv1.Cluster
 	if err := a.k8sClient.Get(ctx, types.NamespacedName{

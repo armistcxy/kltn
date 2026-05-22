@@ -21,7 +21,6 @@ type Observer struct {
 	k8sClient ctrlclient.Client
 }
 
-// NewObserver creates an Observer backed by the given Prometheus querier and Kubernetes client.
 func NewObserver(querier *prometheusquery.PrometheusQuerier, k8sClient ctrlclient.Client) *Observer {
 	return &Observer{
 		querier:   querier,
@@ -29,8 +28,6 @@ func NewObserver(querier *prometheusquery.PrometheusQuerier, k8sClient ctrlclien
 	}
 }
 
-// Observe collects a StorageSnapshot by running all Prometheus queries in parallel
-// and reading the current storage sizes from the CNPG Cluster CR.
 func (o *Observer) Observe(ctx context.Context, cfg Config) (*StorageSnapshot, error) {
 	type queryResult struct {
 		name  string
@@ -62,7 +59,6 @@ func (o *Observer) Observe(ctx context.Context, cfg Config) (*StorageSnapshot, e
 			cfg.Namespace, cfg.Cluster,
 		),
 		// Worst-case growth rate: max of p95 long-term trend and p99 short-term spike.
-		// Windows are configurable so benchmarks can use shorter ranges.
 		"pgdata_worst_case_growth": fmt.Sprintf(
 			`max(quantile_over_time(0.95, (%s)[%s:%s]) or quantile_over_time(0.99, (%s)[%s:%s]))`,
 			consumptionLong, promDuration(pc.LongTermQuantileWindow), promDuration(pc.LongTermSampleInterval),
@@ -102,8 +98,6 @@ func (o *Observer) Observe(ctx context.Context, cfg Config) (*StorageSnapshot, e
 	results := make(map[string]float64, len(queries))
 	for r := range ch {
 		if r.err != nil {
-			// Non-fatal: log and treat as 0 / NaN
-			// Missing metrics should not block scaling decisions
 			slog.Warn("storage metric query failed", "metric", r.name, "err", r.err)
 			results[r.name] = math.NaN()
 		} else {
@@ -111,20 +105,14 @@ func (o *Observer) Observe(ctx context.Context, cfg Config) (*StorageSnapshot, e
 		}
 	}
 
-	// Fetch current storage sizes from the Cluster CR
 	pgDataSize, walSize, err := o.currentSizes(ctx, cfg.Namespace, cfg.Cluster)
 	if err != nil {
 		return nil, fmt.Errorf("fetch current storage sizes: %w", err)
 	}
 
-	// Compute time-to-full from available bytes and worst-case growth rate.
-	// growth_rate > 0 means disk is being consumed, <= 0 means disk is stable or shrinking.
 	availableBytes := results["pgdata_available_bytes"]
 	growthRate := results["pgdata_worst_case_growth"]
 
-	// If CNPG spec size > kubelet-reported capacity, a resize is propagating and
-	// kubelet metrics still reflect the old (smaller) volume. Estimate available bytes
-	// using the spec size so time-to-full is not artificially low during this window.
 	effectiveAvailable := availableBytes
 	capacityBytes := results["pgdata_capacity_bytes"]
 	if !math.IsNaN(capacityBytes) && !math.IsNaN(availableBytes) && capacityBytes > 0 && pgDataSize != "" {
@@ -172,8 +160,6 @@ func (o *Observer) Observe(ctx context.Context, cfg Config) (*StorageSnapshot, e
 	return snap, nil
 }
 
-// currentSizes returns the current spec.storage.size and spec.walStorage.size
-// from the CNPG Cluster CR. walSize is empty if spec.walStorage is not configured.
 func (o *Observer) currentSizes(ctx context.Context, namespace, cluster string) (pgDataSize, walSize string, err error) {
 	var cl cnpgv1.Cluster
 	if err = o.k8sClient.Get(ctx, types.NamespacedName{
@@ -190,8 +176,6 @@ func (o *Observer) currentSizes(ctx context.Context, namespace, cluster string) 
 	return pgDataSize, walSize, nil
 }
 
-// promDuration formats a time.Duration into a Prometheus duration string (e.g. 1h30m → "90m").
-// Prometheus accepts only integer units, so we round to seconds and express as "<N>s".
 func promDuration(d time.Duration) string {
 	secs := int64(d.Seconds())
 	if secs <= 0 {

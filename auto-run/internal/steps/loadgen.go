@@ -86,7 +86,7 @@ func RunLoadgen(ctx context.Context, rc *RunContext, clientset kubernetes.Interf
 		}
 	}
 
-	// --- Collect stdout → results dir ---
+	// --- Collect stdout -> results dir ---
 	if err := collectJobLogs(ctx, rc, clientset, jobName, stepName); err != nil {
 		rc.Logf("[%s] warn: collect logs: %v", stepName, err)
 	}
@@ -201,7 +201,7 @@ func collectJobLogs(ctx context.Context, rc *RunContext, clientset kubernetes.In
 	if err := os.WriteFile(outPath, buf.Bytes(), 0o644); err != nil {
 		return fmt.Errorf("write loadgen-summary.txt: %w", err)
 	}
-	rc.Logf("[%s] saved loadgen output → %s (%d bytes)", stepName, outPath, buf.Len())
+	rc.Logf("[%s] saved loadgen output -> %s (%d bytes)", stepName, outPath, buf.Len())
 	return nil
 }
 

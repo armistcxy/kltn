@@ -53,7 +53,7 @@ func UploadGCS(ctx context.Context, rc *RunContext, sessionID string) (string, e
 
 	prefix := fmt.Sprintf("runs/%s/%s/", sessionID, rc.RunSpec.ID)
 	gcsPath := fmt.Sprintf("gs://%s/%s", bucket, prefix)
-	rc.Logf("[%s] uploading %s → %s", stepName, rc.ResultsDir, gcsPath)
+	rc.Logf("[%s] uploading %s -> %s", stepName, rc.ResultsDir, gcsPath)
 
 	// Build GCS client. Uses GOOGLE_APPLICATION_CREDENTIALS env or workload identity.
 	// google.golang.org/api/option.WithCredentialsFile is deprecated; rely on
@@ -101,7 +101,7 @@ func UploadGCS(ctx context.Context, rc *RunContext, sessionID string) (string, e
 		rc.Logf("[%s] warn: update index.tsv: %v", stepName, err)
 	}
 
-	rc.Logf("[%s] upload complete → %s", stepName, gcsPath)
+	rc.Logf("[%s] upload complete -> %s", stepName, gcsPath)
 	return gcsPath, nil
 }
 

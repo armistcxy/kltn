@@ -10,14 +10,7 @@ import (
 	prometheusquery "github.com/armistcxy/kltn/pkg/prometheus-query"
 )
 
-// PrometheusMetricsObserver implements MetricsObserver by running arbitrary PromQL queries.
-// The PromQL queries are fully specified in each MetricSpec.Query, so this observer
-// is decoupled from any particular set of metrics.
-//
-// Stale-value protection: if a freshly-queried value is 0 but the previous known
-// good value (> 0) exists, the previous value is kept and a warning is logged.
-// This prevents spurious scale-downs caused by rate() windows not yet aligning
-// with the Prometheus scrape interval.
+// PrometheusMetricsObserver implements MetricsObserver by running PromQL queries
 type PrometheusMetricsObserver struct {
 	querier *prometheusquery.PrometheusQuerier
 
@@ -25,7 +18,6 @@ type PrometheusMetricsObserver struct {
 	lastGoodValues map[string]float64
 }
 
-// NewPrometheusMetricsObserver creates a new observer backed by Prometheus.
 func NewPrometheusMetricsObserver(querier *prometheusquery.PrometheusQuerier) *PrometheusMetricsObserver {
 	return &PrometheusMetricsObserver{
 		querier:        querier,
@@ -33,8 +25,7 @@ func NewPrometheusMetricsObserver(querier *prometheusquery.PrometheusQuerier) *P
 	}
 }
 
-// Observe queries every MetricSpec in parallel and returns a snapshot.
-// Returns an error if any metric query fails.
+// Observe queries every MetricSpec in parallel and returns a snapshot
 func (o *PrometheusMetricsObserver) Observe(ctx context.Context, specs []MetricSpec) (*MetricsSnapshot, error) {
 	type result struct {
 		name  string
@@ -45,7 +36,7 @@ func (o *PrometheusMetricsObserver) Observe(ctx context.Context, specs []MetricS
 	ch := make(chan result, len(specs))
 
 	for _, spec := range specs {
-		spec := spec // capture
+		spec := spec
 		go func() {
 			val, err := o.querier.QueryScalar(ctx, spec.Query)
 			ch <- result{name: spec.Name, value: val, err: err}
@@ -71,7 +62,6 @@ func (o *PrometheusMetricsObserver) Observe(ctx context.Context, specs []MetricS
 		return nil, fmt.Errorf("metric query failures: %v", failed)
 	}
 
-	// Stale-value protection: replace zero values with the last known good value.
 	o.mu.Lock()
 	for name, value := range snapshot.Values {
 		if value == 0 {

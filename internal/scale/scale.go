@@ -9,44 +9,30 @@ import (
 	"time"
 )
 
-// ScaleController is the main control loop: Observe → Decide → Act.
-//
-// Its configuration is fully dynamic: call UpdateConfig() at any time
-// to change metrics, thresholds, aggregation, or prediction settings
-// without restarting the controller.
-//
-// Predictive scaling is optional and pluggable: attach any Predictor
-// implementation via WithPredictor(). If no predictor is set, or if
-// prediction is disabled in Config, only reactive scaling is used.
+// ScaleController is the main control loop: Observe -> Decide -> Act.
 type ScaleController struct {
 	mu  sync.RWMutex
 	cfg Config
 
 	observer   MetricsObserver
 	cnpgClient *CNPGClient
-	predictor  Predictor          // nil → reactive only
-	metrics    *ControllerMetrics // nil → no metrics exported
+	predictor  Predictor
+	metrics    *ControllerMetrics
 
-	// Rolling per-metric history, used by the predictor.
 	historyMu sync.Mutex
 	history   map[string][]DataPoint
 
-	// Scale-down stabilization window: rolling record of past reactive targets.
-	// A scale-down is only permitted when max(window) < current replicas.
 	stabilizationMu      sync.Mutex
 	reactiveTargetWindow []reactiveRecord
 
 	lastScaleAt time.Time
 }
 
-// reactiveRecord is one timestamped reactive-target observation kept in the
-// scale-down stabilization window.
 type reactiveRecord struct {
 	at     time.Time
 	target int
 }
 
-// NewScaleController creates a ScaleController with the given initial config.
 func NewScaleController(cfg Config, observer MetricsObserver, cnpgClient *CNPGClient) *ScaleController {
 	return &ScaleController{
 		cfg:        cfg,
@@ -56,9 +42,6 @@ func NewScaleController(cfg Config, observer MetricsObserver, cnpgClient *CNPGCl
 	}
 }
 
-// WithMetrics attaches a ControllerMetrics instance that the controller will use
-// to export Prometheus metrics on every reconcile cycle.
-// Can be called before Run() or concurrently; it is goroutine-safe.
 func (c *ScaleController) WithMetrics(m *ControllerMetrics) *ScaleController {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -66,8 +49,6 @@ func (c *ScaleController) WithMetrics(m *ControllerMetrics) *ScaleController {
 	return c
 }
 
-// WithPredictor attaches a predictive scaling algorithm.
-// Can be called before Run() or concurrently; it is goroutine-safe.
 func (c *ScaleController) WithPredictor(p Predictor) *ScaleController {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -76,9 +57,6 @@ func (c *ScaleController) WithPredictor(p Predictor) *ScaleController {
 	return c
 }
 
-// UpdateConfig replaces the running configuration atomically.
-// Safe to call from any goroutine while Run() is active.
-// The new config takes effect on the next reconcile iteration.
 func (c *ScaleController) UpdateConfig(cfg Config) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -94,7 +72,6 @@ func (c *ScaleController) UpdateConfig(cfg Config) {
 	c.cfg = cfg
 }
 
-// Run starts the reconcile loop and blocks until ctx is cancelled.
 func (c *ScaleController) Run(ctx context.Context) error {
 	cfg := c.getConfig()
 	slog.Info("scale controller started",
@@ -110,7 +87,6 @@ func (c *ScaleController) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			// Refresh ticker if pollInterval changed at runtime.
 			if newCfg := c.getConfig(); newCfg.PollInterval != cfg.PollInterval {
 				cfg = newCfg
 				ticker.Reset(cfg.PollInterval)
@@ -118,14 +94,12 @@ func (c *ScaleController) Run(ctx context.Context) error {
 			}
 
 			if err := c.reconcileOnce(ctx); err != nil {
-				// Log and continue: a transient error should not crash the loop.
 				slog.Error("reconcile error", "err", err)
 			}
 		}
 	}
 }
 
-// reconcileOnce executes one full Observe → Decide → Act cycle.
 func (c *ScaleController) reconcileOnce(ctx context.Context) error {
 	cfg := c.getConfig()
 
@@ -136,24 +110,20 @@ func (c *ScaleController) reconcileOnce(ctx context.Context) error {
 	}
 	slog.Info("metrics observed", "at", snapshot.At, "values", snapshot.Values)
 
-	// Export raw (instantaneous) metric values.
 	if c.metrics != nil {
 		for name, value := range snapshot.Values {
 			c.metrics.recordRaw(name, value)
 		}
 	}
 
-	// Record into rolling history for the predictor.
 	c.appendHistory(snapshot)
 
-	// Export moving-average values (computed over the full history buffer).
 	if c.metrics != nil {
 		for name := range snapshot.Values {
 			c.metrics.recordAvg(name, c.computeHistoryAvg(name))
 		}
 	}
 
-	// Decide
 	decision, err := c.Decide(ctx, cfg, snapshot)
 	if err != nil {
 		return fmt.Errorf("decide: %w", err)
@@ -167,13 +137,11 @@ func (c *ScaleController) reconcileOnce(ctx context.Context) error {
 		"reason", decision.Reason,
 	)
 
-	// Export decision metrics.
 	if c.metrics != nil {
 		current, _ := c.cnpgClient.GetCurrentInstances(ctx)
 		c.metrics.recordDecision(current, decision.ReactiveTarget, decision.PredictiveTarget, decision.TargetInstances)
 	}
 
-	// Act
 	if err := c.Act(ctx, decision); err != nil {
 		return fmt.Errorf("act: %w", err)
 	}
@@ -181,8 +149,6 @@ func (c *ScaleController) reconcileOnce(ctx context.Context) error {
 	return nil
 }
 
-// Decide computes the scaling decision from a metrics snapshot.
-// It is exported so callers can unit-test decision logic directly.
 func (c *ScaleController) Decide(ctx context.Context, cfg Config, snapshot *MetricsSnapshot) (*ScaleDecision, error) {
 	current, err := c.cnpgClient.GetCurrentInstances(ctx)
 	if err != nil {
@@ -198,10 +164,6 @@ func (c *ScaleController) Decide(ctx context.Context, cfg Config, snapshot *Metr
 		}, nil
 	}
 
-	// Reactive target: compute desired replicas from current metric values,
-	// then apply the scale-down stabilization window. The stabilized target is
-	// the max reactive target seen over the window — a transient dip (e.g.
-	// backends 76→4→71 within 60 s) will not lower the floor until the window expires.
 	rawReactive, triggerMetric := c.computeReactiveTarget(cfg, snapshot, current)
 	reactiveTarget := c.stabilizedReactiveTarget(rawReactive, cfg.ScaleDownStabilizationWindow)
 	if reactiveTarget != rawReactive {
@@ -212,7 +174,6 @@ func (c *ScaleController) Decide(ctx context.Context, cfg Config, snapshot *Metr
 		)
 	}
 
-	// Predictive target: use the predictor to forecast the primary metric and map to desired replicas.
 	predictiveTarget := 0
 	predictor := c.getPredictor()
 	if cfg.Prediction != nil && cfg.Prediction.Enabled && predictor != nil {
@@ -224,14 +185,12 @@ func (c *ScaleController) Decide(ctx context.Context, cfg Config, snapshot *Metr
 		}
 	}
 
-	// Compute final target based on scalingMode.
 	var target int
 	switch cfg.ScalingMode {
 	case ScalingModeReactive:
 		target = reactiveTarget
 	case ScalingModePredictive:
 		if predictiveTarget == -1 {
-			// Prediction not ready — hold current replicas.
 			slog.Info("predictive mode: waiting for sufficient history")
 			target = current
 		} else {
@@ -246,9 +205,7 @@ func (c *ScaleController) Decide(ctx context.Context, cfg Config, snapshot *Metr
 	}
 	target = clamp(target, cfg.MinInstances, cfg.MaxInstances)
 
-	// Scale-down guard: block scale-down if any guard metric is still above its
-	// scaleDownThreshold. Gauge metrics (e.g. backends) are more trustworthy than
-	// rate-based metrics during transient scrape gaps.
+	// Scale-down guard: block scale-down if any guard metric is still above its scaleDownThreshold
 	if target < current {
 		for _, spec := range cfg.Metrics {
 			if !spec.ScaleDownGuard {
@@ -276,13 +233,13 @@ func (c *ScaleController) Decide(ctx context.Context, cfg Config, snapshot *Metr
 	case target > current:
 		decision.Action = ScaleUp
 		decision.Reason = fmt.Sprintf(
-			"scale up %d → %d (trigger=%s, reactive=%d, predictive=%d)",
+			"scale up %d -> %d (trigger=%s, reactive=%d, predictive=%d)",
 			current, target, triggerMetric, reactiveTarget, predictiveTarget,
 		)
 	case target < current:
 		decision.Action = ScaleDown
 		decision.Reason = fmt.Sprintf(
-			"scale down %d → %d (trigger=%s, reactive=%d, predictive=%d)",
+			"scale down %d -> %d (trigger=%s, reactive=%d, predictive=%d)",
 			current, target, triggerMetric, reactiveTarget, predictiveTarget,
 		)
 	default:
@@ -293,7 +250,6 @@ func (c *ScaleController) Decide(ctx context.Context, cfg Config, snapshot *Metr
 	return decision, nil
 }
 
-// Act applies the scaling decision by patching the CNPG Cluster.
 func (c *ScaleController) Act(ctx context.Context, d *ScaleDecision) error {
 	if d.Action == ScaleNone {
 		return nil
@@ -305,12 +261,6 @@ func (c *ScaleController) Act(ctx context.Context, d *ScaleDecision) error {
 	return nil
 }
 
-// stabilizedReactiveTarget appends the latest reactiveTarget to the rolling window,
-// evicts entries older than the stabilization window, and returns the maximum target
-// seen within the window. When a scale-down is tentative (window max >= current),
-// this effectively blocks it until all recent observations confirm lower demand.
-//
-// If window is 0, the raw reactiveTarget is returned unchanged.
 func (c *ScaleController) stabilizedReactiveTarget(reactiveTarget int, window time.Duration) int {
 	if window <= 0 {
 		return reactiveTarget
@@ -322,17 +272,14 @@ func (c *ScaleController) stabilizedReactiveTarget(reactiveTarget int, window ti
 	c.stabilizationMu.Lock()
 	defer c.stabilizationMu.Unlock()
 
-	// Append current observation.
 	c.reactiveTargetWindow = append(c.reactiveTargetWindow, reactiveRecord{at: now, target: reactiveTarget})
 
-	// Evict records older than the stabilization window.
 	i := 0
 	for i < len(c.reactiveTargetWindow) && c.reactiveTargetWindow[i].at.Before(cutoff) {
 		i++
 	}
 	c.reactiveTargetWindow = c.reactiveTargetWindow[i:]
 
-	// Return the maximum reactive target seen within the window.
 	maxTarget := reactiveTarget
 	for _, r := range c.reactiveTargetWindow {
 		if r.target > maxTarget {
@@ -342,10 +289,6 @@ func (c *ScaleController) stabilizedReactiveTarget(reactiveTarget int, window ti
 	return maxTarget
 }
 
-// computeReactiveTarget calculates desired replicas from the current snapshot.
-// Each metric independently produces a desired count; the aggregation strategy
-// (max or weighted_average) combines them into a single number.
-// Returns the target replica count and the name of the metric that drove it.
 func (c *ScaleController) computeReactiveTarget(cfg Config, snapshot *MetricsSnapshot, current int) (int, string) {
 	if len(cfg.Metrics) == 0 {
 		return current, ""
@@ -371,8 +314,6 @@ func (c *ScaleController) computeReactiveTarget(cfg Config, snapshot *MetricsSna
 
 		desired, reason := desiredReplicasForMetric(spec, value, current)
 
-		// scaleUpOnly metrics must not participate in scale-down aggregation.
-		// When floored at current, they would always win the max() and block scale-down.
 		if spec.ScaleUpOnly && desired >= current {
 			slog.Info("scaleUpOnly metric skipped (no scale-up signal)", "metric", spec.Name, "value", value)
 			continue
@@ -401,11 +342,10 @@ func (c *ScaleController) computeReactiveTarget(cfg Config, snapshot *MetricsSna
 	switch cfg.Aggregation {
 	case AggregationWeightedAverage:
 		target = int(math.Ceil(weightedAverage(desires, weights)))
-	default: // AggregationMax
+	default:
 		target = int(maxSlice(desires))
 	}
 
-	// Find the metric that drove the final target.
 	trigger := ""
 	for _, e := range entries {
 		if e.desired == target {
@@ -416,12 +356,6 @@ func (c *ScaleController) computeReactiveTarget(cfg Config, snapshot *MetricsSna
 	return target, trigger
 }
 
-// desiredReplicasForMetric maps a single metric value to a desired replica count.
-// Returns the desired count and a human-readable reason string.
-//
-// If TargetValuePerReplica > 0:  desired = ceil(value / TargetValuePerReplica)
-// Otherwise: threshold-based ±1 step from current.
-// If ScaleUpOnly is set, the result is floored at current (never contributes to scale-down).
 func desiredReplicasForMetric(spec MetricSpec, value float64, current int) (int, string) {
 	var desired int
 	var reason string
@@ -446,9 +380,6 @@ func desiredReplicasForMetric(spec MetricSpec, value float64, current int) (int,
 	return desired, reason
 }
 
-// computePredictiveTarget uses the injected Predictor to forecast the primary
-// metric and returns the desired replica count based on that forecast.
-// This is the integration point for any forecasting algorithm.
 func (c *ScaleController) computePredictiveTarget(
 	ctx context.Context,
 	cfg Config,
@@ -463,7 +394,6 @@ func (c *ScaleController) computePredictiveTarget(
 		return -1, nil
 	}
 
-	// Guard: require a minimum amount of history before trusting the forecast.
 	if pred.MinHistoryDuration > 0 {
 		age := time.Since(history[0].Timestamp)
 		if age < pred.MinHistoryDuration {
@@ -476,7 +406,6 @@ func (c *ScaleController) computePredictiveTarget(
 		}
 	}
 
-	// Call the injected predictor function to get the forecasted metric value at now+horizon.
 	predicted, err := predictor.Predict(ctx, history, pred.Horizon)
 	if err != nil {
 		return current, fmt.Errorf("predictor %q: %w", predictor.Name(), err)
@@ -488,7 +417,6 @@ func (c *ScaleController) computePredictiveTarget(
 		"horizon", pred.Horizon,
 	)
 
-	// Map the predicted value → desired replicas using the same spec as reactive.
 	for _, spec := range cfg.Metrics {
 		if spec.Name == pred.MetricName {
 			desired, _ := desiredReplicasForMetric(spec, predicted, current)
@@ -499,11 +427,8 @@ func (c *ScaleController) computePredictiveTarget(
 	return current, fmt.Errorf("prediction metric %q not found in metrics list", pred.MetricName)
 }
 
-// History management for the predictor. We keep a rolling history of observed metric values,
+const maxHistorySize = 2880
 
-const maxHistorySize = 2880 // 24 h at 30 s intervals
-
-// appendHistory records new metric values into the rolling per-metric history.
 func (c *ScaleController) appendHistory(snapshot *MetricsSnapshot) {
 	c.historyMu.Lock()
 	defer c.historyMu.Unlock()
@@ -519,8 +444,6 @@ func (c *ScaleController) appendHistory(snapshot *MetricsSnapshot) {
 	}
 }
 
-// computeHistoryAvg returns the arithmetic mean of all values in the rolling
-// history for metricName. Returns 0 if no history exists yet.
 func (c *ScaleController) computeHistoryAvg(metricName string) float64 {
 	c.historyMu.Lock()
 	defer c.historyMu.Unlock()
@@ -536,7 +459,6 @@ func (c *ScaleController) computeHistoryAvg(metricName string) float64 {
 	return sum / float64(len(h))
 }
 
-// getHistory returns a copy of the history for the named metric (oldest-first).
 func (c *ScaleController) getHistory(metricName string) []DataPoint {
 	c.historyMu.Lock()
 	defer c.historyMu.Unlock()
@@ -549,8 +471,6 @@ func (c *ScaleController) getHistory(metricName string) []DataPoint {
 	copy(out, h)
 	return out
 }
-
-// Helper functions for decision logic.
 
 func (c *ScaleController) getConfig() Config {
 	c.mu.RLock()

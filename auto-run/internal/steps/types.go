@@ -1,5 +1,5 @@
 // Package steps contains the five benchmark pipeline steps:
-// reset-cluster → deploy-controller → run-loadgen → collect-metrics → upload-gcs
+// reset-cluster -> deploy-controller -> run-loadgen -> collect-metrics -> upload-gcs
 package steps
 
 import (

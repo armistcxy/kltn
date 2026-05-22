@@ -43,13 +43,11 @@ func TestPatchInstances(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*120)
 	defer cancel()
 
-	// Get current instances
 	currentInstances, err := cnpgClient.GetCurrentInstances(ctx)
 	if err != nil {
 		t.Fatalf("failed to get current instances: %v", err)
 	}
 
-	// Patch to currentInstances + 1
 	newInstances := currentInstances + 1
 	if err := cnpgClient.PatchInstances(ctx, newInstances); err != nil {
 		t.Fatalf("failed to patch instances: %v", err)
@@ -60,7 +58,6 @@ func TestPatchInstances(t *testing.T) {
 	// Wait a bit for the update to take effect
 	time.Sleep(time.Second * 15)
 
-	// Check if patched correctly
 	updatedInstances, err := cnpgClient.GetCurrentInstances(ctx)
 	if err != nil {
 		t.Fatalf("failed to get updated instances: %v", err)
@@ -71,7 +68,6 @@ func TestPatchInstances(t *testing.T) {
 
 	t.Logf("Verified patched instances: %d", updatedInstances)
 
-	// Revert back to original instances
 	if err := cnpgClient.PatchInstances(ctx, currentInstances); err != nil {
 		t.Fatalf("failed to revert instances: %v", err)
 	}

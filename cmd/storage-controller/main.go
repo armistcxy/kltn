@@ -29,7 +29,6 @@ func main() {
 	metricsAddr := flag.String("metrics-addr", ":9092", "Address to expose Prometheus metrics (/metrics) and health (/healthz)")
 	flag.Parse()
 
-	// Structured logging — tee to stdout and a file.
 	f, err := os.OpenFile(*logFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		log.Fatalf("failed to open log file %s: %v", *logFile, err)
@@ -40,7 +39,6 @@ func main() {
 	slog.SetDefault(slog.New(handler))
 	ctrllog.SetLogger(logr.FromSlogHandler(handler))
 
-	// Load config.
 	cfg, err := storage.LoadConfig(*configPath)
 	if err != nil {
 		log.Fatalf("failed to load storage config: %v", err)
@@ -55,13 +53,11 @@ func main() {
 		"pollInterval", cfg.PollInterval,
 	)
 
-	// Prometheus querier.
 	querier, err := prometheusquery.NewPrometheusQuerier(*prometheusAddr)
 	if err != nil {
 		log.Fatalf("failed to create Prometheus querier: %v", err)
 	}
 
-	// Kubernetes client with CNPG scheme.
 	if err := cnpgv1.AddToScheme(scheme.Scheme); err != nil {
 		log.Fatalf("failed to register CNPG scheme: %v", err)
 	}
@@ -74,7 +70,6 @@ func main() {
 		log.Fatalf("failed to create Kubernetes client: %v", err)
 	}
 
-	// Wire components.
 	observer := storage.NewObserver(querier, k8sClient)
 	decider := storage.NewDecider()
 	actor := storage.NewActor(k8sClient, cfg.Namespace, cfg.Cluster)
@@ -83,7 +78,6 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Start metrics + health HTTP server.
 	go func() {
 		mux := http.NewServeMux()
 		mux.Handle("/metrics", promhttp.Handler())

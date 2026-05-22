@@ -20,69 +20,49 @@ type Config struct {
 	SafetyGuards SafetyGuardsConfig
 }
 
-// PGDataConfig configures autoscaling for the main PostgreSQL data volume.
+// PGDataConfig configures autoscaling for the main PostgreSQL data volume
 type PGDataConfig struct {
-	// ScaleUpThresholdPercent triggers a resize when PVC usage exceeds this value (e.g. 80).
-	ScaleUpThresholdPercent float64
-
-	// CriticalThresholdPercent triggers an immediate resize, bypassing cooldown (e.g. 90).
+	ScaleUpThresholdPercent  float64
 	CriticalThresholdPercent float64
 
-	// StepPercent is the percentage by which to increase the current size each resize (e.g. 50 → 10Gi → 15Gi).
+	// StepPercent is the percentage by which to increase the current size each resize
 	StepPercent float64
 
-	// MaxSizeGi is the hard upper limit in GiB (e.g. 100).
+	// MaxSizeGi is the hard upper limit in GiB
 	MaxSizeGi int
 
-	// Cooldown is the minimum time between two resize operations.
+	// Cooldown is the minimum time between two resize operations
 	Cooldown time.Duration
 
-	// PreemptiveResizeIfFullInHours triggers a preemptive resize when the worst-case estimated
-	// time-to-full (based on p95/p99 historical growth rate) falls below this many hours.
 	// 0 disables preemptive resizing.
 	PreemptiveResizeIfFullInHours float64
 
-	// Growth rate estimation windows. Defaults are sized for production (days of history).
-	// Shorten for benchmarks or fast-filling environments.
-
-	// LongTermDerivWindow is the range used in deriv() to estimate hourly consumption rate (default: 1h).
-	LongTermDerivWindow time.Duration
-	// LongTermQuantileWindow is the lookback range for the p95 quantile_over_time (default: 24h).
-	LongTermQuantileWindow time.Duration
-	// LongTermSampleInterval is the subquery step for the long-term quantile (default: 5m).
-	LongTermSampleInterval time.Duration
-
-	// ShortTermDerivWindow is the range used in deriv() to estimate short-term spike rate (default: 5m).
-	ShortTermDerivWindow time.Duration
-	// ShortTermQuantileWindow is the lookback range for the p99 quantile_over_time (default: 6h).
+	LongTermDerivWindow     time.Duration
+	LongTermQuantileWindow  time.Duration
+	LongTermSampleInterval  time.Duration
+	ShortTermDerivWindow    time.Duration
 	ShortTermQuantileWindow time.Duration
-	// ShortTermSampleInterval is the subquery step for the short-term quantile (default: 1m).
 	ShortTermSampleInterval time.Duration
 }
 
-// WALConfig configures autoscaling for the WAL volume (spec.walStorage).
-// Only applies when the CNPG cluster has a dedicated walStorage volume.
+// WALConfig configures autoscaling for the WAL volume (spec.walStorage)
 type WALConfig struct {
-	// Enabled controls whether WAL storage scaling is active.
 	Enabled bool
 
-	// ScaleUpThresholdPercent triggers a resize when WAL usage ratio exceeds this value (e.g. 70).
-	ScaleUpThresholdPercent float64
-
-	// CriticalThresholdPercent triggers an immediate resize, bypassing cooldown (e.g. 85).
+	ScaleUpThresholdPercent  float64
 	CriticalThresholdPercent float64
 
-	// StepPercent is the percentage by which to increase the current WAL volume size per resize.
+	// StepPercent is the percentage by which to increase the current WAL volume size per resize
 	StepPercent float64
 
-	// MaxSizeGi is the hard upper limit in GiB.
+	// MaxSizeGi is the hard upper limit in GiB
 	MaxSizeGi int
 
-	// Cooldown is the minimum time between two WAL resize operations.
+	// Cooldown is the minimum time between two WAL resize operations
 	Cooldown time.Duration
 }
 
-// SafetyGuardsConfig defines conditions that block a storage resize.
+// SafetyGuardsConfig defines conditions that block a storage resize
 type SafetyGuardsConfig struct {
 	// BlockIfWALArchivePending blocks resize when WAL archive pending files exceed this count.
 	// 0 disables this guard.
@@ -93,20 +73,18 @@ type SafetyGuardsConfig struct {
 	BlockIfReplicationLagSeconds float64
 }
 
-// ---- YAML parsing types ----
-
 type configFile struct {
 	StorageScaling storageScalingFile `yaml:"storageScaling"`
 }
 
 type storageScalingFile struct {
-	Enabled      bool              `yaml:"enabled"`
-	PollInterval string            `yaml:"pollInterval"`
-	Namespace    string            `yaml:"namespace"`
-	Cluster      string            `yaml:"cluster"`
-	PGData       pgDataConfigFile  `yaml:"pgdata"`
-	WAL          walConfigFile     `yaml:"wal"`
-	SafetyGuards safetyGuardsFile  `yaml:"safetyGuards"`
+	Enabled      bool             `yaml:"enabled"`
+	PollInterval string           `yaml:"pollInterval"`
+	Namespace    string           `yaml:"namespace"`
+	Cluster      string           `yaml:"cluster"`
+	PGData       pgDataConfigFile `yaml:"pgdata"`
+	WAL          walConfigFile    `yaml:"wal"`
+	SafetyGuards safetyGuardsFile `yaml:"safetyGuards"`
 }
 
 type pgDataConfigFile struct {
@@ -139,8 +117,6 @@ type safetyGuardsFile struct {
 	BlockIfReplicationLagSeconds float64 `yaml:"blockIfReplicationLagSeconds"`
 }
 
-// LoadConfig reads and parses a YAML config file into Config.
-// The YAML file must have a top-level "storageScaling" key.
 func LoadConfig(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

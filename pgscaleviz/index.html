@@ -649,8 +649,8 @@ function buildExpected(steps) {
 function parseReplicaLog(text) {
   if (!text) return [];
   const rows = [];
-  // Supports: [2m30s] → 3 | [2m30s] instances: 3 | [2m30s] target: 3 | [2m30s] 3
-  const re = /\[\s*([\d]+m[\d]+s|[\d]+s)\]\s*(?:→|instances:|replicas:|target:)?\s*(\d+)/g;
+  // Supports: [2m30s] -> 3 | [2m30s] instances: 3 | [2m30s] target: 3 | [2m30s] 3
+  const re = /\[\s*([\d]+m[\d]+s|[\d]+s)\]\s*(?:->|→|instances:|replicas:|target:)?\s*(\d+)/g;
   let m;
   while ((m = re.exec(text)) !== null) {
     rows.push({ t: parseTime(m[1]), instances: parseInt(m[2]) });

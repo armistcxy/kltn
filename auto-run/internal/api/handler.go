@@ -55,10 +55,10 @@ func New(
 	mux.HandleFunc("GET /api/runs/{id}/logs", h.streamLogs)
 
 	// Files (uploaded configs + scenarios)
-	// GET  /api/files/{category}           → list files
-	// POST /api/files/{category}           → upload (multipart or raw body)
-	// GET  /api/files/{category}/{name}    → get content
-	// DELETE /api/files/{category}/{name}  → delete
+	// GET  /api/files/{category}           -> list files
+	// POST /api/files/{category}           -> upload (multipart or raw body)
+	// GET  /api/files/{category}/{name}    -> get content
+	// DELETE /api/files/{category}/{name}  -> delete
 	mux.HandleFunc("GET /api/files/{category}", h.listFiles)
 	mux.HandleFunc("POST /api/files/{category}", h.uploadFile)
 	mux.HandleFunc("GET /api/files/{category}/{name}", h.getFile)

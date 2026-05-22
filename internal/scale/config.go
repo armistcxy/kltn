@@ -10,10 +10,7 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// configFile is the YAML-shaped struct used only for parsing.
-// Duration fields are kept as strings (e.g. "30s", "5m") because
-// sigs.k8s.io/yaml goes through JSON, which cannot unmarshal duration strings
-// into time.Duration (int64) directly.
+// configFile is the YAML-shaped struct used only for parsing
 type configFile struct {
 	MinInstances                 int             `yaml:"minInstances"`
 	MaxInstances                 int             `yaml:"maxInstances"`
@@ -27,15 +24,15 @@ type configFile struct {
 }
 
 type predictionFile struct {
-	Enabled            bool                 `yaml:"enabled"`
-	Type               string               `yaml:"type"`
-	MetricName         string               `yaml:"metricName"`
-	Horizon            string               `yaml:"horizon"`
-	MinHistoryDuration string               `yaml:"minHistoryDuration"`
-	SMA                *smaConfigFile       `yaml:"sma,omitempty"`
-	EWMA               *ewmaConfigFile      `yaml:"ewma,omitempty"`
-	LinReg             *linRegConfigFile    `yaml:"linreg,omitempty"`
-	HoltWinters        *holtWintersFile     `yaml:"holtwinters,omitempty"`
+	Enabled            bool              `yaml:"enabled"`
+	Type               string            `yaml:"type"`
+	MetricName         string            `yaml:"metricName"`
+	Horizon            string            `yaml:"horizon"`
+	MinHistoryDuration string            `yaml:"minHistoryDuration"`
+	SMA                *smaConfigFile    `yaml:"sma,omitempty"`
+	EWMA               *ewmaConfigFile   `yaml:"ewma,omitempty"`
+	LinReg             *linRegConfigFile `yaml:"linreg,omitempty"`
+	HoltWinters        *holtWintersFile  `yaml:"holtwinters,omitempty"`
 }
 
 type smaConfigFile struct {
@@ -58,7 +55,6 @@ type holtWintersFile struct {
 	SeasonLength int     `yaml:"seasonLength"`
 }
 
-// LoadConfig reads and parses a YAML config file into Config.
 func LoadConfig(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -78,7 +74,6 @@ func LoadConfig(path string) (Config, error) {
 	return cfg, nil
 }
 
-// convertConfig translates configFile into Config, parsing duration strings.
 func convertConfig(raw configFile) (Config, error) {
 	mode := ScalingMode(raw.ScalingMode)
 	if mode == "" {
@@ -161,8 +156,7 @@ func convertConfig(raw configFile) (Config, error) {
 	return cfg, validateConfig(cfg)
 }
 
-// WatchConfig polls the config file every interval and calls onChange when it changes.
-// Blocks until ctx is cancelled.
+// WatchConfig polls the config file every interval and calls onChange when it changes
 func WatchConfig(ctx context.Context, path string, interval time.Duration, onChange func(Config)) {
 	var lastMod time.Time
 
