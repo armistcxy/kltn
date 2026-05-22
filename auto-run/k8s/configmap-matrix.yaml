@@ -1,4 +1,4 @@
-# Seed ConfigMap for matrix.yaml — overwritten by the auto-run server at runtime.
+# Seed ConfigMap for matrix.yaml - overwritten by the auto-run server at runtime.
 # Apply this once to bootstrap; the server will keep it up to date.
 apiVersion: v1
 kind: ConfigMap

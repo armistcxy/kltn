@@ -122,7 +122,7 @@ grafana-forward:
 setup-gke: create add-sub-pool install-cnpg-operator install-prometheus apply-infra
 	@echo ""
 	@echo "✅ GKE lab ready!"
-	@echo "   Run: make grafana-forward   — để mở Grafana"
+	@echo "   Run: make grafana-forward   - để mở Grafana"
 
 add-gke-nodepool:
 	@echo "📦 Adding n2-standard-2 node pool to GKE cluster..."
@@ -307,4 +307,4 @@ init-setup-gke: create-gke-cluster \
                 apply-backup-resources
 	@echo ""
 	@echo "✅ GKE lab fully initialized!"
-	@echo "   Run: make grafana-forward   — để mở Grafana"
+	@echo "   Run: make grafana-forward   - để mở Grafana"

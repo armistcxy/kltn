@@ -33,7 +33,7 @@ COPY auto-run/ui /ui
 COPY loadgen/scenarios /repo/loadgen/scenarios
 COPY scale-controller-config /repo/scale-controller-config
 
-# Default env — override in Deployment.
+# Default env - override in Deployment.
 ENV MATRIX_FILE=/config/matrix.yaml
 ENV REPO_ROOT=/repo
 ENV RESULTS_DIR=/results

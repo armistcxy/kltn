@@ -1,6 +1,0 @@
-FROM alpine:3.18
-
-RUN apk add --no-cache postgresql-client bash
-
-WORKDIR /pgbench
-ENTRYPOINT ["sleep", "infinity"]

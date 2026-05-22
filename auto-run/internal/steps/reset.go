@@ -28,7 +28,7 @@ const (
 // (fix dangling/initializing PVCs, delete stuck recovery jobs) and retries once.
 //
 // Checklist reference:
-//  1. Zero maxSyncReplicas before patching — prevents controller from reverting
+//  1. Zero maxSyncReplicas before patching - prevents controller from reverting
 //     the patch when instances < maxSyncReplicas+1.
 //  2. On timeout: patch dangling PVCs (cnpg.io/pvcStatus=initializing -> ready)
 //     so the CNPG controller can create the pod and self-heal.
@@ -55,7 +55,7 @@ func ResetCluster(ctx context.Context, rc *RunContext) error {
 	}
 
 	// Timeout: apply checklist fixes then retry.
-	rc.Logf("[%s] timeout — applying checklist fixes (dangling PVCs, stuck jobs)", stepName)
+	rc.Logf("[%s] timeout - applying checklist fixes (dangling PVCs, stuck jobs)", stepName)
 
 	if err := fixDanglingPVCs(ctx, rc, stepName); err != nil {
 		rc.Logf("[%s] warn: fix dangling PVCs: %v", stepName, err)
@@ -86,7 +86,7 @@ func ensureMaxSyncReplicasZero(ctx context.Context, rc *RunContext, stepName str
 	if cluster.Spec.MaxSyncReplicas == 0 {
 		return nil
 	}
-	rc.Logf("[%s] maxSyncReplicas=%d — zeroing to allow scale-down", stepName, cluster.Spec.MaxSyncReplicas)
+	rc.Logf("[%s] maxSyncReplicas=%d - zeroing to allow scale-down", stepName, cluster.Spec.MaxSyncReplicas)
 	patch := client.MergeFrom(cluster.DeepCopy())
 	cluster.Spec.MaxSyncReplicas = 0
 	return rc.K8sClient.Patch(ctx, &cluster, patch)
@@ -150,7 +150,7 @@ func fixDanglingPVCs(ctx context.Context, rc *RunContext, stepName string) error
 		if pvc.Annotations["cnpg.io/pvcStatus"] != "initializing" {
 			continue
 		}
-		rc.Logf("[%s] dangling PVC %s (pvcStatus=initializing) — patching to ready", stepName, pvc.Name)
+		rc.Logf("[%s] dangling PVC %s (pvcStatus=initializing) - patching to ready", stepName, pvc.Name)
 		patch := client.MergeFrom(pvc.DeepCopy())
 		if pvc.Annotations == nil {
 			pvc.Annotations = make(map[string]string)
@@ -181,7 +181,7 @@ func deleteStuckJobs(ctx context.Context, rc *RunContext, stepName string) error
 		if job.Status.Succeeded > 0 || job.Status.CompletionTime != nil {
 			continue // completed normally
 		}
-		rc.Logf("[%s] stuck job %s (succeeded=%d) — deleting", stepName, job.Name, job.Status.Succeeded)
+		rc.Logf("[%s] stuck job %s (succeeded=%d) - deleting", stepName, job.Name, job.Status.Succeeded)
 		if err := rc.K8sClient.Delete(ctx, job); err != nil && !k8serrors.IsNotFound(err) {
 			rc.Logf("[%s] warn: delete job %s: %v", stepName, job.Name, err)
 		}

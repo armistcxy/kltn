@@ -6,12 +6,12 @@ Auto-Run là hệ thống tự động hoá toàn bộ vòng lặp benchmark, ch
 Web UI (kubectl port-forward)
   ↕  edit matrix / xem progress
 Auto-Run Server (in-cluster Pod)
-  → reset cluster
-  → deploy controller
-  → run loadgen
-  → collect metrics
-  → upload GCS
-  → run tiếp...
+  -> reset cluster
+  -> deploy controller
+  -> run loadgen
+  -> collect metrics
+  -> upload GCS
+  -> run tiếp...
 ```
 
 ---
@@ -30,16 +30,16 @@ auto-run/
 │   ├── orchestrator/
 │   │   └── orchestrator.go     # Vòng lặp chính: chạy run tuần tự, xử lý control signal
 │   ├── steps/
-│   │   ├── types.go            # RunContext — object truyền qua tất cả bước
+│   │   ├── types.go            # RunContext - object truyền qua tất cả bước
 │   │   ├── reset.go            # Bước 1: reset CNPG cluster về minInstances
 │   │   ├── controller.go       # Bước 2: deploy/teardown scale-controller Deployment
 │   │   ├── loadgen.go          # Bước 3: tạo loadgen Job, đợi xong, lấy logs
-│   │   ├── collect.go          # Bước 4: query Prometheus → CSV + controller logs
+│   │   ├── collect.go          # Bước 4: query Prometheus -> CSV + controller logs
 │   │   └── upload.go           # Bước 5: upload results/ lên GCS
 │   ├── api/
 │   │   └── handler.go          # REST endpoints + SSE log stream
 │   ├── bus/
-│   │   └── bus.go              # In-memory pub/sub: orchestrator → SSE clients
+│   │   └── bus.go              # In-memory pub/sub: orchestrator -> SSE clients
 │   └── filestore/
 │       └── store.go            # Quản lý file upload từ Web UI (configs, scenarios)
 ├── ui/                         # Web UI tĩnh (HTML + vanilla JS)
@@ -69,7 +69,7 @@ File: `auto-run/internal/orchestrator/orchestrator.go`
 Orchestrator chạy trong background goroutine, nhận control signal qua channel:
 
 ```
-[Start] → loop() → NextQueued() → executeRun() → NextQueued() → ...
+[Start] -> loop() -> NextQueued() -> executeRun() -> NextQueued() -> ...
                                        ↓
                               [Pause / Stop signal]
 ```
@@ -79,8 +79,8 @@ Orchestrator chạy trong background goroutine, nhận control signal qua channe
 | Signal | Hành vi |
 |--------|---------|
 | `start` | Bắt đầu loop nếu chưa chạy; resume nếu đang pause |
-| `pause` | Set flag `pauseAfter = true` → dừng sau khi run hiện tại xong |
-| `stop` | Cancel context của run hiện tại + gửi `SignalStop` → thoát loop |
+| `pause` | Set flag `pauseAfter = true` -> dừng sau khi run hiện tại xong |
+| `stop` | Cancel context của run hiện tại + gửi `SignalStop` -> thoát loop |
 | `retry` | Reset tất cả run về `queued` rồi start lại |
 
 **Session ID** được tạo khi `Start()` được gọi, format `20260102-150405` (UTC), dùng làm prefix GCS.
@@ -89,7 +89,7 @@ Orchestrator chạy trong background goroutine, nhận control signal qua channe
 
 ## Năm bước của một run
 
-### Bước 1 — `reset-cluster` (`steps/reset.go`)
+### Bước 1 - `reset-cluster` (`steps/reset.go`)
 
 **Mục đích:** Đảm bảo cluster bắt đầu ở trạng thái clean (đúng số instance) trước mỗi run.
 
@@ -100,7 +100,7 @@ Orchestrator chạy trong background goroutine, nhận control signal qua channe
 4. Poll mỗi 10s: đếm pod label `cnpg.io/cluster=pg-cluster` đang `Running`
 5. Thành công khi `running == target`
 
-**Timeout:** 5 phút. Quá timeout → run đó `FAILED`.
+**Timeout:** 5 phút. Quá timeout -> run đó `FAILED`.
 
 **Hằng số trong code:**
 ```go
@@ -112,7 +112,7 @@ cnpgNamespace   = "default"
 
 ---
 
-### Bước 2 — `deploy-controller` (`steps/controller.go`)
+### Bước 2 - `deploy-controller` (`steps/controller.go`)
 
 **Mục đích:** Deploy đúng config scale-controller cho run này.
 
@@ -142,7 +142,7 @@ controllerPollPeriod     = 5 * time.Second
 
 ---
 
-### Bước 3 — `run-loadgen` (`steps/loadgen.go`)
+### Bước 3 - `run-loadgen` (`steps/loadgen.go`)
 
 **Mục đích:** Chạy traffic load theo scenario đã định nghĩa.
 
@@ -158,8 +158,8 @@ controllerPollPeriod     = 5 * time.Second
    - `backoffLimit = 0` (không retry pod)
    - `restartPolicy = Never`
 5. Poll Job status mỗi 10s:
-   - `succeeded > 0` → thành công, lấy logs
-   - `failed > 0` → lấy logs rồi trả lỗi
+   - `succeeded > 0` -> thành công, lấy logs
+   - `failed > 0` -> lấy logs rồi trả lỗi
 6. Lưu stdout của Job vào `results/<run-id>/loadgen-summary.txt`
 7. Cleanup: xoá Job + scenario ConfigMap
 
@@ -174,14 +174,14 @@ loadgenPollPeriod = 10 * time.Second
 
 ---
 
-### Bước 4 — `collect-metrics` (`steps/collect.go`)
+### Bước 4 - `collect-metrics` (`steps/collect.go`)
 
 **Mục đích:** Thu thập toàn bộ time-series của run từ Prometheus + logs của controller.
 
 **Logic:**
 1. Gọi `GET /api/v1/query_range` với `step=15s` cho từng metric trong window `[startTS, endTS]`
 2. Ghi kết quả ra CSV `timestamp,value` trong `results/<run-id>/`
-3. Lấy logs pod controller → `results/<run-id>/controller.log`
+3. Lấy logs pod controller -> `results/<run-id>/controller.log`
 
 **Danh sách metrics được thu thập:**
 
@@ -197,11 +197,11 @@ loadgenPollPeriod = 10 * time.Second
 | `metric_raw_tps.csv` | `scaling_observer_metric_value{metric_name="tps"}` |
 | `metric_raw_avg_latency.csv` | `scaling_observer_metric_value{metric_name="avg_latency"}` |
 
-**Lưu ý:** Bước này là best-effort — lỗi ở đây không làm run `FAILED`.
+**Lưu ý:** Bước này là best-effort - lỗi ở đây không làm run `FAILED`.
 
 ---
 
-### Bước 5 — `upload-gcs` (`steps/upload.go`)
+### Bước 5 - `upload-gcs` (`steps/upload.go`)
 
 **Mục đích:** Lưu trữ kết quả vĩnh viễn lên GCS để phân tích sau.
 
@@ -227,9 +227,9 @@ gs://<gcs_bucket>/runs/<session-id>/<run-id>/
   └── metric_raw_avg_latency.csv
 ```
 
-**Authentication:** GCS client dùng Application Default Credentials (ADC). Trong GKE, Workload Identity tự động inject credentials — không cần mount JSON key.
+**Authentication:** GCS client dùng Application Default Credentials (ADC). Trong GKE, Workload Identity tự động inject credentials - không cần mount JSON key.
 
-**Bước này là best-effort** — lỗi upload không làm run `FAILED`.
+**Bước này là best-effort** - lỗi upload không làm run `FAILED`.
 
 **Schema `meta.json`:**
 ```json
@@ -298,7 +298,7 @@ runs:
 | `concurrency` | Số worker loadgen nếu run không override | Ảnh hưởng trực tiếp đến tải |
 | `db_url` | Connection string đến PostgreSQL | Dùng `pg-cluster-r` (read endpoint) để load qua replica |
 | `prometheus_url` | URL Prometheus in-cluster | Dùng để collect metrics sau mỗi run |
-| `gcs_bucket` | Tên GCS bucket lưu kết quả | Bỏ trống → bỏ qua bước upload |
+| `gcs_bucket` | Tên GCS bucket lưu kết quả | Bỏ trống -> bỏ qua bước upload |
 | `worker_node` | Hostname node để pin controller + loadgen | Tránh loadgen chạy cùng node với DB pod |
 
 ### Node Isolation (worker_node)
@@ -313,7 +313,7 @@ spec:
         kubernetes.io/hostname: "<worker_node>"
 ```
 
-CNPG Cluster có `nodeAffinity` riêng (trong `infra-init/cnpg-cluster.yaml`) để pin DB pod vào các node DB — không bị ảnh hưởng bởi setting này.
+CNPG Cluster có `nodeAffinity` riêng (trong `infra-init/cnpg-cluster.yaml`) để pin DB pod vào các node DB - không bị ảnh hưởng bởi setting này.
 
 ### Environment Variables (server)
 
@@ -334,9 +334,9 @@ Server đọc config từ flag hoặc env var (env var ưu tiên):
 ### RBAC (`k8s/rbac.yaml`)
 
 Server cần ServiceAccount `auto-run-ksa` với quyền:
-- `get/list/watch/patch` — CNPG Cluster CRD (`postgresql.cnpg.io/clusters`)
-- `create/get/list/watch/delete` — Deployments, Jobs, ConfigMaps, Pods (namespace `default`)
-- `get/list` — Nodes (validate worker_node)
+- `get/list/watch/patch` - CNPG Cluster CRD (`postgresql.cnpg.io/clusters`)
+- `create/get/list/watch/delete` - Deployments, Jobs, ConfigMaps, Pods (namespace `default`)
+- `get/list` - Nodes (validate worker_node)
 
 ### Deployment (`k8s/deployment.yaml`)
 
@@ -347,14 +347,14 @@ Init container: git-clone (alpine/git)
 
 Container: auto-run (zzzsleepzzz/auto-run:latest)
   ├── Volumes:
-  │     matrix-config  → /config   (ConfigMap auto-run-matrix)
-  │     repo           → /repo     (emptyDir, populated bởi init container)
-  │     results        → /results  (emptyDir)
-  │     uploads        → /uploads  (emptyDir)
+  │     matrix-config  -> /config   (ConfigMap auto-run-matrix)
+  │     repo           -> /repo     (emptyDir, populated bởi init container)
+  │     results        -> /results  (emptyDir)
+  │     uploads        -> /uploads  (emptyDir)
   └── Resources: 100m/128Mi request, 500m/512Mi limit
 ```
 
-**Lưu ý:** Không cần `GOOGLE_APPLICATION_CREDENTIALS` — Workload Identity của GKE inject credentials tự động qua metadata server.
+**Lưu ý:** Không cần `GOOGLE_APPLICATION_CREDENTIALS` - Workload Identity của GKE inject credentials tự động qua metadata server.
 
 ### Secret cần tạo thủ công
 
@@ -418,7 +418,7 @@ kubectl apply -f auto-run/k8s/
 
 # 5. Truy cập Web UI
 kubectl port-forward svc/auto-run 8080:8080
-# → http://localhost:8080
+# -> http://localhost:8080
 
 # 6. Port-forward Prometheus (khi debug local)
 kubectl port-forward -n monitoring svc/prometheus-operated 9090:9090
@@ -444,8 +444,8 @@ kubectl port-forward -n monitoring svc/prometheus-operated 9090:9090
 
 **Teardown luôn chạy:** Dù loadgen thành công hay thất bại, `TeardownController` đều được gọi để dọn Deployment + ConfigMap, tránh conflict với run tiếp theo.
 
-**Upload là best-effort:** Nếu GCS upload thất bại, run vẫn được đánh dấu `SUCCESS`/`FAILED` theo kết quả của loadgen — kết quả local vẫn còn trong `results/<run-id>/`.
+**Upload là best-effort:** Nếu GCS upload thất bại, run vẫn được đánh dấu `SUCCESS`/`FAILED` theo kết quả của loadgen - kết quả local vẫn còn trong `results/<run-id>/`.
 
-**GCS bucket bỏ trống:** Nếu `defaults.gcs_bucket = ""`, bước upload bị bỏ qua hoàn toàn — tiện khi test locally.
+**GCS bucket bỏ trống:** Nếu `defaults.gcs_bucket = ""`, bước upload bị bỏ qua hoàn toàn - tiện khi test locally.
 
 **Persist qua pod restart:** Matrix state được sync từ ConfigMap `auto-run-matrix` lúc khởi động. File upload từ Web UI được persist qua ConfigMap trong `filestore`. Tuy nhiên, `results/` và `uploads/` dùng `emptyDir` nên mất khi pod restart.

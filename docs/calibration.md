@@ -77,7 +77,7 @@ Update: 1 node capacity: 330 TPS
     
     ```
     ╔═══════════════════════════════════════════════════╗
-    ║  loadgen — PostgreSQL load generator              ║
+    ║  loadgen - PostgreSQL load generator              ║
     ╠═══════════════════════════════════════════════════╣
     ║  workload:    pgbench-read-heavy                  ║
     ║  concurrency: 20                                  ║
@@ -116,7 +116,7 @@ Update: 1 node capacity: 330 TPS
     
     ```
     ╔═══════════════════════════════════════════════════╗
-    ║  loadgen — PostgreSQL load generator              ║
+    ║  loadgen - PostgreSQL load generator              ║
     ╠═══════════════════════════════════════════════════╣
     ║  workload:    pgbench-read-heavy                  ║
     ║  concurrency: 50                                  ║
@@ -155,7 +155,7 @@ Update: 1 node capacity: 330 TPS
     
     ```
     ╔═══════════════════════════════════════════════════╗
-    ║  loadgen — PostgreSQL load generator              ║
+    ║  loadgen - PostgreSQL load generator              ║
     ╠═══════════════════════════════════════════════════╣
     ║  workload:    pgbench-read-heavy                  ║
     ║  concurrency: 10                                  ║
@@ -194,7 +194,7 @@ Update: 1 node capacity: 330 TPS
     
     ```
     ╔═══════════════════════════════════════════════════╗
-    ║  loadgen — PostgreSQL load generator              ║
+    ║  loadgen - PostgreSQL load generator              ║
     ╠═══════════════════════════════════════════════════╣
     ║  workload:    pgbench-read-heavy                  ║
     ║  concurrency: 20                                  ║
@@ -233,7 +233,7 @@ Update: 1 node capacity: 330 TPS
     
     ```
     ╔═══════════════════════════════════════════════════╗
-    ║  loadgen — PostgreSQL load generator              ║
+    ║  loadgen - PostgreSQL load generator              ║
     ╠═══════════════════════════════════════════════════╣
     ║  workload:    pgbench-read-heavy                  ║
     ║  concurrency: 50                                  ║
@@ -281,7 +281,7 @@ Có thể nhận thấy rằng 1 instance có ngưỡng TPS là 370, khi tăng l
     
     ```
     ╔═══════════════════════════════════════════════════╗
-    ║  loadgen — PostgreSQL load generator              ║
+    ║  loadgen - PostgreSQL load generator              ║
     ╠═══════════════════════════════════════════════════╣
     ║  workload:    pgbench-read-heavy                  ║
     ║  concurrency: 10                                  ║
@@ -321,7 +321,7 @@ Có thể nhận thấy rằng 1 instance có ngưỡng TPS là 370, khi tăng l
     
     ```
     ╔═══════════════════════════════════════════════════╗
-    ║  loadgen — PostgreSQL load generator              ║
+    ║  loadgen - PostgreSQL load generator              ║
     ╠═══════════════════════════════════════════════════╣
     ║  workload:    pgbench-read-heavy                  ║
     ║  concurrency: 20                                  ║
@@ -361,7 +361,7 @@ Có thể nhận thấy rằng 1 instance có ngưỡng TPS là 370, khi tăng l
     ```
     loadgen run --db-url postgres://app:password@pg-cluster-r:5432/app --workload pgbench-read-heavy --concurrency 50
     ╔═══════════════════════════════════════════════════╗
-    ║  loadgen — PostgreSQL load generator              ║
+    ║  loadgen - PostgreSQL load generator              ║
     ╠═══════════════════════════════════════════════════╣
     ║  workload:    pgbench-read-heavy                  ║
     ║  concurrency: 50                                  ║

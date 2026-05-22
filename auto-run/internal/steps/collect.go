@@ -34,7 +34,7 @@ var queriesForRun = []metricQuery{
 	{
 		// count() returns a single series (no multi-series bleed from pod restarts).
 		// pod=~"pg-cluster-[0-9]+" matches only actual instance pods (pg-cluster-1,
-		// pg-cluster-2, ...) — excludes recovery/join/initdb pods which have
+		// pg-cluster-2, ...) - excludes recovery/join/initdb pods which have
 		// non-numeric suffixes. kube_pod_status_ready==1 excludes Init/Pending pods.
 		Filename: "replicas.csv",
 		PromQL:   `count(kube_pod_status_ready{namespace="default",pod=~"pg-cluster-[0-9]+",condition="true"} == 1) or vector(0)`,

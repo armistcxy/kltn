@@ -412,7 +412,7 @@
     <div>
       <div class="section-label">scenario (expected TPS)</div>
       <div class="scenario-area">
-        <textarea id="scenarioInput" placeholder="# gradual-ramp (18 min) — paste your YAML steps:
+        <textarea id="scenarioInput" placeholder="# gradual-ramp (18 min) - paste your YAML steps:
 - duration: 180s
   rps: 50
 - duration: 600s
@@ -502,7 +502,7 @@ function renderRunList() {
       <div style="border-top:1px solid var(--border)">
         <div style="display:flex;align-items:center;gap:5px;padding:5px 12px;cursor:pointer;color:var(--muted);font-size:10px;font-family:'JetBrains Mono',monospace;user-select:none"
           onclick="const ta=this.nextElementSibling;ta.style.display=ta.style.display==='none'?'block':'none'">
-          ▸ controller log (optional — shows target replicas)
+          ▸ controller log (optional - shows target replicas)
         </div>
         <textarea style="display:none;width:100%;min-height:72px;background:transparent;border:none;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:10px;line-height:1.5;padding:6px 12px;resize:vertical;outline:none"
           placeholder="paste scale-controller stdout here...&#10;time=... msg=decision action=scale-up target=3 ..."
@@ -608,7 +608,7 @@ function parseScenario(text) {
     return buildExpected(steps);
   }
 
-  // YAML-ish format — parse block-by-block so optional end_rps aligns correctly.
+  // YAML-ish format - parse block-by-block so optional end_rps aligns correctly.
   // Strip comments first to avoid matching values inside `# ... | rps: N` annotations.
   const stripped = text.split('\n').map(line => line.replace(/#.*$/, '')).join('\n');
   const steps = [];
@@ -886,7 +886,7 @@ function renderControllerRun(panel, run) {
     box2.className = 'chart-box';
     box2.innerHTML = `
       <div class="chart-title" style="color:${run.color}">${run.name || 'run '+run.id}</div>
-      <div class="chart-subtitle">scaling decisions — target / reactive / predictive</div>
+      <div class="chart-subtitle">scaling decisions - target / reactive / predictive</div>
       <div class="legend">
         <span class="legend-item"><span class="legend-line" style="background:#a78bfa"></span>target</span>
         <span class="legend-item"><span class="legend-line" style="background:#60a5fa"></span>reactive</span>
@@ -959,7 +959,7 @@ function renderControllerRun(panel, run) {
     pills.innerHTML = `
       <span style="font-family:'JetBrains Mono',monospace;font-size:11px;padding:3px 10px;border-radius:4px;background:rgba(52,211,153,0.12);color:#34d399;border:1px solid rgba(52,211,153,0.2)">↑ scale-up ×${scaleUps}</span>
       <span style="font-family:'JetBrains Mono',monospace;font-size:11px;padding:3px 10px;border-radius:4px;background:rgba(248,113,113,0.12);color:#f87171;border:1px solid rgba(248,113,113,0.2)">↓ scale-down ×${scaleDowns}</span>
-      <span style="font-family:'JetBrains Mono',monospace;font-size:11px;padding:3px 10px;border-radius:4px;background:rgba(107,114,128,0.12);color:#6b7280;border:1px solid rgba(107,114,128,0.2)">— none ×${nones}</span>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:11px;padding:3px 10px;border-radius:4px;background:rgba(107,114,128,0.12);color:#6b7280;border:1px solid rgba(107,114,128,0.2)">- none ×${nones}</span>
     `;
     box2.appendChild(pills);
   }
@@ -1169,7 +1169,7 @@ function renderOverlay(parsed, expected) {
   ).join('');
 
   box1.innerHTML = `
-    <div class="chart-title">overlay — TPS</div>
+    <div class="chart-title">overlay - TPS</div>
     <div class="chart-subtitle">all runs on same axis</div>
     <div class="legend">
       ${expected.length ? `<span class="legend-item"><span class="legend-dash" style="border-color:#6b7280"></span>expected</span>` : ''}
@@ -1212,7 +1212,7 @@ function renderOverlay(parsed, expected) {
   const box2 = document.createElement('div');
   box2.className = 'chart-box';
   box2.innerHTML = `
-    <div class="chart-title">overlay — P95 latency</div>
+    <div class="chart-title">overlay - P95 latency</div>
     <div class="chart-subtitle">latency comparison across runs</div>
     <div class="legend">${legendHTML}</div>
   `;
@@ -1261,7 +1261,7 @@ function renderPercentiles(parsed) {
   box.className = 'chart-box';
   box.innerHTML = `
     <div class="chart-title">latency percentiles</div>
-    <div class="chart-subtitle">P50 / P95 / P99 / P99.9 — overall summary</div>
+    <div class="chart-subtitle">P50 / P95 / P99 / P99.9 - overall summary</div>
   `;
 
   const runs_with_summary = parsed.filter(r=>r.summary);
@@ -1394,12 +1394,12 @@ function renderSummary(parsed) {
           ${run.name||'run '+run.id}
         </span>
       </td>
-      <td style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.04)">${s?Math.round(s.tps):'—'}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.04)">${s?s.p50+'ms':'—'}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.04);color:${s&&s.p95>100?'#f87171':s&&s.p95>50?'#fbbf24':'#34d399'}">${s?s.p95+'ms':'—'}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.04)">${s?s.p99+'ms':'—'}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.04)">${s?s.p999+'ms':'—'}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.04);color:${s&&s.errors>0?'#f87171':'#34d399'}">${s?s.errors:'—'}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.04)">${s?Math.round(s.tps):'-'}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.04)">${s?s.p50+'ms':'-'}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.04);color:${s&&s.p95>100?'#f87171':s&&s.p95>50?'#fbbf24':'#34d399'}">${s?s.p95+'ms':'-'}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.04)">${s?s.p99+'ms':'-'}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.04)">${s?s.p999+'ms':'-'}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.04);color:${s&&s.errors>0?'#f87171':'#34d399'}">${s?s.errors:'-'}</td>
       <td style="padding:8px 10px;border-bottom:1px solid rgba(255,255,255,0.04);color:${sat>60?'#f87171':sat>0?'#fbbf24':'#34d399'}">${sat}s</td>
     `;
     tbody.appendChild(tr);
@@ -1485,7 +1485,7 @@ function chartOptions(labels, maxY=1700, maxY2=500, dualAxis=true, maxInstances=
   };
 }
 
-function showEmpty(panel, msg='No data — add a run and click render') {
+function showEmpty(panel, msg='No data - add a run and click render') {
   panel.innerHTML = `
     <div class="empty-state">
       <div class="icon">◈</div>

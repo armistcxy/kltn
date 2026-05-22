@@ -43,7 +43,7 @@
       }
     ]
   },
-  "description": "pgscale autoscaler — reactive vs predictive scaling decisions and observed DB metrics",
+  "description": "pgscale autoscaler - reactive vs predictive scaling decisions and observed DB metrics",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -55,7 +55,7 @@
   "time": { "from": "now-30m", "to": "now" },
   "timepicker": {},
   "timezone": "browser",
-  "title": "pgscale — Autoscaler",
+  "title": "pgscale - Autoscaler",
   "uid": "pgscale-autoscaler",
   "version": 1,
   "weekStart": "",
@@ -179,14 +179,14 @@
           "refId": "D"
         }
       ],
-      "title": "Instance Targets — Reactive vs Predictive vs Current",
+      "title": "Instance Targets - Reactive vs Predictive vs Current",
       "type": "timeseries"
     },
     {
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 11 },
       "id": 3,
-      "title": "Controller — Observed Metrics",
+      "title": "Controller - Observed Metrics",
       "type": "row"
     },
     {
@@ -331,7 +331,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "description": "CPU cores (sum across all pg-cluster pods) observed by the controller. Weight 0.5 — acts as secondary signal.",
+      "description": "CPU cores (sum across all pg-cluster pods) observed by the controller. Weight 0.5 - acts as secondary signal.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },

@@ -20,20 +20,20 @@ EWMA chỉ cho biết level hiện tại, cần làm thêm bước nữa là tí
 ```
 Input: history []DataPoint, horizon time.Duration, alpha float64
  
-Step 1 — Compute EWMA of values:
+Step 1 - Compute EWMA of values:
   ewma = history[0].Value
   for i := 1; i < len(history); i++ {
       ewma = alpha * history[i].Value + (1 - alpha) * ewma
   }
 
-Step 2 — Compute trend (slope) from last N points:
+Step 2 - Compute trend (slope) from last N points:
   Use last min(30, len(history)) points
   slope = linearSlope(recentPoints)  // simple OLS slope
   
-Step 3 — Extrapolate:
+Step 3 - Extrapolate:
   steps = horizon / avgInterval(history)
   predicted = ewma + slope * steps
   
-Step 4 — Floor at 0:
+Step 4 - Floor at 0:
   return max(predicted, 0)
 ```

@@ -20,17 +20,17 @@ kind: ClusterRole
 metadata:
   name: auto-run
 rules:
-  # CNPG Cluster — read + patch spec.instances for reset
+  # CNPG Cluster - read + patch spec.instances for reset
   - apiGroups: ["postgresql.cnpg.io"]
     resources: ["clusters"]
     verbs: ["get", "list", "watch", "patch", "update"]
 
-  # CNPG Backup — create + watch for post-benchmark backup step
+  # CNPG Backup - create + watch for post-benchmark backup step
   - apiGroups: ["postgresql.cnpg.io"]
     resources: ["backups"]
     verbs: ["get", "list", "watch", "create", "delete"]
 
-  # Core workloads — manage controller Deployments, loadgen Jobs, ConfigMaps
+  # Core workloads - manage controller Deployments, loadgen Jobs, ConfigMaps
   - apiGroups: ["apps"]
     resources: ["deployments"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
@@ -48,7 +48,7 @@ rules:
     resources: ["pods", "pods/log"]
     verbs: ["get", "list", "watch"]
 
-  # PVC patch — fix dangling PVCs in reset step (cnpg.io/pvcStatus annotation)
+  # PVC patch - fix dangling PVCs in reset step (cnpg.io/pvcStatus annotation)
   - apiGroups: [""]
     resources: ["persistentvolumeclaims"]
     verbs: ["get", "list", "patch"]
@@ -58,7 +58,7 @@ rules:
     resources: ["nodes"]
     verbs: ["get", "list"]
 
-  # PodMonitor — create/delete per-run monitor so Prometheus scrapes controller metrics
+  # PodMonitor - create/delete per-run monitor so Prometheus scrapes controller metrics
   - apiGroups: ["monitoring.coreos.com"]
     resources: ["podmonitors"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]

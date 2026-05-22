@@ -16,7 +16,7 @@ spec:
         app: auto-run
     spec:
       # Workload Identity: KSA auto-run-ksa impersonates the GCP service account
-      # annotated in rbac.yaml — không cần mount key JSON.
+      # annotated in rbac.yaml - không cần mount key JSON.
       serviceAccountName: auto-run-ksa
 
       containers:
@@ -37,7 +37,7 @@ spec:
               value: /uploads
             - name: UI_DIR
               value: /ui
-            # Không cần GOOGLE_APPLICATION_CREDENTIALS — Workload Identity
+            # Không cần GOOGLE_APPLICATION_CREDENTIALS - Workload Identity
             # cung cấp credentials tự động qua metadata server của GKE.
           volumeMounts:
             - name: matrix-config

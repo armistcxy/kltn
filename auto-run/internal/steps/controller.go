@@ -132,7 +132,7 @@ func CollectControllerLogs(ctx context.Context, rc *RunContext) (string, error) 
 	if len(pods.Items) == 0 {
 		return "", fmt.Errorf("no controller pod found for run %s", rc.RunSpec.ID)
 	}
-	// Return pod name — actual log retrieval uses REST client (see collect.go).
+	// Return pod name - actual log retrieval uses REST client (see collect.go).
 	return pods.Items[0].Name, nil
 }
 

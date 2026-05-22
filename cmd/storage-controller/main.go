@@ -44,7 +44,7 @@ func main() {
 		log.Fatalf("failed to load storage config: %v", err)
 	}
 	if !cfg.Enabled {
-		slog.Info("storage scaling is disabled in config — exiting")
+		slog.Info("storage scaling is disabled in config - exiting")
 		return
 	}
 	slog.Info("storage config loaded",

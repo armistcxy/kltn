@@ -5,42 +5,20 @@ storageScaling:
   cluster: pg-cluster
 
   pgdata:
-    # Trigger resize when PVC usage exceeds this percent
     scaleUpThresholdPercent: 80
-    # Trigger immediate resize (bypass cooldown) at this percent
     criticalThresholdPercent: 90
-    # Increase current size by this percent each resize (10Gi → 15Gi → 22Gi → ...)
     stepPercent: 50
-    # Hard upper limit in GiB
     maxSizeGi: 100
-    # Minimum minutes between two resize operations (based on the hossted platform)
     cooldownMinutes: 1
-    # Trigger preemptive resize when worst-case time-to-full (based on p95/p99 historical
-    # growth rate) falls below this many hours. 0 disables preemptive resizing.
-    # Worst-case rate = max(p95 of hourly growth over 24h, p99 of 5m growth over 6h)
-    # This captures both sustained trends and short-term spikes (batch jobs, WAL bursts).
-    # preemptiveResizeIfFullInHours: 24
-
-    # Growth rate estimation windows.
-    # Production defaults (omit these lines to use defaults):
-    #   longTermDerivWindow: 1h       # deriv() range for sustained-trend estimate
-    #   longTermQuantileWindow: 24h   # p95 lookback range
-    #   longTermSampleInterval: 5m    # subquery step
-    #   shortTermDerivWindow: 5m      # deriv() range for spike estimate
-    #   shortTermQuantileWindow: 6h   # p99 lookback range
-    #   shortTermSampleInterval: 1m   # subquery step
-    #
-  # Benchmark preset (20-40 min runs, 5GB PVC, ~3MB/s fill):
     longTermDerivWindow: 2m
     longTermQuantileWindow: 20m
     longTermSampleInterval: 30s
     shortTermDerivWindow: 1m
     shortTermQuantileWindow: 10m
     shortTermSampleInterval: 15s
-    preemptiveResizeIfFullInHours: 0.15  # trigger if disk full in <9 min
+    preemptiveResizeIfFullInHours: 0.15
 
   wal:
-    # Set to true only if the CNPG cluster has spec.walStorage configured
     enabled: false
     scaleUpThresholdPercent: 70
     criticalThresholdPercent: 85
@@ -49,10 +27,5 @@ storageScaling:
     cooldownMinutes: 10
 
   safetyGuards:
-    # Block resize if WAL archive pending files exceed this count.
-    # High pending count means archiving is broken → WAL will grow unboundedly.
-    # 0 disables this guard.
     blockIfWalArchivePending: 100
-    # Block resize if max replica replication lag exceeds this threshold in seconds.
-    # 0 disables this guard.
     blockIfReplicationLagSeconds: 30

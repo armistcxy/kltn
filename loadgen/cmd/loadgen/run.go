@@ -340,7 +340,7 @@ func printHeader(wl string, concurrency int, duration time.Duration, maxRPS floa
 		rpsStr = fmt.Sprintf("%.0f rps", maxRPS)
 	}
 	fmt.Printf("╔═══════════════════════════════════════════════════╗\n")
-	fmt.Printf("║  loadgen — PostgreSQL load generator              ║\n")
+	fmt.Printf("║  loadgen - PostgreSQL load generator              ║\n")
 	fmt.Printf("╠═══════════════════════════════════════════════════╣\n")
 	fmt.Printf("║  workload:    %-36s║\n", wl)
 	fmt.Printf("║  concurrency: %-36d║\n", concurrency)

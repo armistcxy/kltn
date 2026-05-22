@@ -1,4 +1,4 @@
-/* Auto-Run Benchmark Harness — UI */
+/* Auto-Run Benchmark Harness - UI */
 'use strict';
 
 const API = '';  // same origin via port-forward
@@ -216,7 +216,7 @@ function updateOrchestratorUI() {
   document.getElementById('btn-pause').disabled = !state.orchRunning;
   document.getElementById('btn-stop').disabled  = !state.orchRunning;
   document.getElementById('session-label').textContent =
-    state.sessionID ? `session: ${state.sessionID}` : 'session: —';
+    state.sessionID ? `session: ${state.sessionID}` : 'session: -';
 }
 
 // ── Tab switching ─────────────────────────────────────────

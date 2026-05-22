@@ -74,20 +74,20 @@ func (d *Decider) DecidePGData(snap *StorageSnapshot, cfg PGDataConfig, guards S
 	case critical:
 		decision.TriggerType = TriggerTypeCritical
 		decision.Reason = fmt.Sprintf(
-			"critical: pgdata usage %.1f%% >= %.1f%% — resize %s -> %s (bypassing cooldown)",
+			"critical: pgdata usage %.1f%% >= %.1f%% - resize %s -> %s (bypassing cooldown)",
 			usage, cfg.CriticalThresholdPercent, snap.CurrentPGDataSize, newSize,
 		)
 	case preemptive:
 		decision.TriggerType = TriggerTypePreemptive
 		ttfHours := snap.PGDataTimeToFullSeconds / 3600
 		decision.Reason = fmt.Sprintf(
-			"preemptive: worst-case time-to-full %.1fh < threshold %.1fh (p95/p99 growth rate) — resize %s -> %s",
+			"preemptive: worst-case time-to-full %.1fh < threshold %.1fh (p95/p99 growth rate) - resize %s -> %s",
 			ttfHours, cfg.PreemptiveResizeIfFullInHours, snap.CurrentPGDataSize, newSize,
 		)
 	default:
 		decision.TriggerType = TriggerTypeReactive
 		decision.Reason = fmt.Sprintf(
-			"pgdata usage %.1f%% >= %.1f%% — resize %s -> %s",
+			"pgdata usage %.1f%% >= %.1f%% - resize %s -> %s",
 			usage, cfg.ScaleUpThresholdPercent, snap.CurrentPGDataSize, newSize,
 		)
 	}
@@ -107,7 +107,7 @@ func (d *Decider) DecideWAL(snap *StorageSnapshot, cfg WALConfig, guards SafetyG
 	}
 
 	if snap.CurrentWALSize == "" {
-		decision.Reason = "cluster has no dedicated walStorage — skipping"
+		decision.Reason = "cluster has no dedicated walStorage - skipping"
 		return decision
 	}
 
@@ -153,13 +153,13 @@ func (d *Decider) DecideWAL(snap *StorageSnapshot, cfg WALConfig, guards SafetyG
 	if critical {
 		decision.TriggerType = TriggerTypeCritical
 		decision.Reason = fmt.Sprintf(
-			"critical: wal usage %.1f%% >= %.1f%% — resize %s -> %s (bypassing cooldown)",
+			"critical: wal usage %.1f%% >= %.1f%% - resize %s -> %s (bypassing cooldown)",
 			usagePct, cfg.CriticalThresholdPercent, snap.CurrentWALSize, newSize,
 		)
 	} else {
 		decision.TriggerType = TriggerTypeReactive
 		decision.Reason = fmt.Sprintf(
-			"wal usage %.1f%% >= %.1f%% — resize %s -> %s",
+			"wal usage %.1f%% >= %.1f%% - resize %s -> %s",
 			usagePct, cfg.ScaleUpThresholdPercent, snap.CurrentWALSize, newSize,
 		)
 	}
@@ -243,7 +243,7 @@ func isResizePropagating(snap *StorageSnapshot) (bool, string) {
 	specBytes := float64(specQ.Value())
 	if specBytes > snap.PGDataCapacityBytes*1.05 {
 		return true, fmt.Sprintf(
-			"resize propagating: spec=%s (%.0f GiB) > kubelet capacity=%.1f GiB — metrics lagging, skipping decision",
+			"resize propagating: spec=%s (%.0f GiB) > kubelet capacity=%.1f GiB - metrics lagging, skipping decision",
 			snap.CurrentPGDataSize, specBytes/float64(1<<30), snap.PGDataCapacityBytes/float64(1<<30),
 		)
 	}
