@@ -124,6 +124,7 @@ func (c *ScaleController) reconcileOnce(ctx context.Context) error {
 		}
 	}
 
+	// Decide
 	decision, err := c.Decide(ctx, cfg, snapshot)
 	if err != nil {
 		return fmt.Errorf("decide: %w", err)
@@ -142,6 +143,7 @@ func (c *ScaleController) reconcileOnce(ctx context.Context) error {
 		c.metrics.recordDecision(current, decision.ReactiveTarget, decision.PredictiveTarget, decision.TargetInstances)
 	}
 
+	// Act
 	if err := c.Act(ctx, decision); err != nil {
 		return fmt.Errorf("act: %w", err)
 	}
@@ -155,7 +157,7 @@ func (c *ScaleController) Decide(ctx context.Context, cfg Config, snapshot *Metr
 		return nil, fmt.Errorf("get current instances: %w", err)
 	}
 
-	// Cooldown guard.
+	// Cooldown guard
 	if !c.lastScaleAt.IsZero() && time.Since(c.lastScaleAt) < cfg.Cooldown {
 		return &ScaleDecision{
 			Action:          ScaleNone,
@@ -205,7 +207,7 @@ func (c *ScaleController) Decide(ctx context.Context, cfg Config, snapshot *Metr
 	}
 	target = clamp(target, cfg.MinInstances, cfg.MaxInstances)
 
-	// Scale-down guard: block scale-down if any guard metric is still above its scaleDownThreshold
+	// Scale-down guard (block scale-down if any guard metric is still above its scaleDownThreshold)
 	if target < current {
 		for _, spec := range cfg.Metrics {
 			if !spec.ScaleDownGuard {
