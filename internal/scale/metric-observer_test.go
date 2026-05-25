@@ -39,7 +39,7 @@ func newTestObserver(t *testing.T) *PrometheusMetricsObserver {
 		t.Fatalf("create querier: %v", err)
 	}
 
-	return NewPrometheusMetricsObserver(querier)
+	return NewPrometheusMetricsObserver(querier, 2*time.Minute)
 }
 
 func TestPrometheusMetricsObserver_Integration(t *testing.T) {

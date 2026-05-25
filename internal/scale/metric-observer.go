@@ -10,18 +10,25 @@ import (
 	prometheusquery "github.com/armistcxy/kltn/pkg/prometheus-query"
 )
 
-// PrometheusMetricsObserver implements MetricsObserver by running PromQL queries
-type PrometheusMetricsObserver struct {
-	querier *prometheusquery.PrometheusQuerier
-
-	mu             sync.Mutex
-	lastGoodValues map[string]float64
+type lastGoodEntry struct {
+	value float64
+	at    time.Time
 }
 
-func NewPrometheusMetricsObserver(querier *prometheusquery.PrometheusQuerier) *PrometheusMetricsObserver {
+// PrometheusMetricsObserver implements MetricsObserver by running PromQL queries
+type PrometheusMetricsObserver struct {
+	querier          *prometheusquery.PrometheusQuerier
+	lastGoodValueTTL time.Duration
+
+	mu             sync.Mutex
+	lastGoodValues map[string]lastGoodEntry
+}
+
+func NewPrometheusMetricsObserver(querier *prometheusquery.PrometheusQuerier, lastGoodValueTTL time.Duration) *PrometheusMetricsObserver {
 	return &PrometheusMetricsObserver{
-		querier:        querier,
-		lastGoodValues: make(map[string]float64),
+		querier:          querier,
+		lastGoodValueTTL: lastGoodValueTTL,
+		lastGoodValues:   make(map[string]lastGoodEntry),
 	}
 }
 
@@ -65,15 +72,28 @@ func (o *PrometheusMetricsObserver) Observe(ctx context.Context, specs []MetricS
 	o.mu.Lock()
 	for name, value := range snapshot.Values {
 		if value == 0 {
-			if last, ok := o.lastGoodValues[name]; ok && last > 0 {
-				slog.Warn("metric returned 0, using last known good value",
-					"metric", name,
-					"lastGood", last,
-				)
-				snapshot.Values[name] = last
+			entry, ok := o.lastGoodValues[name]
+			if !ok || entry.value <= 0 {
+				continue
 			}
+			age := time.Since(entry.at)
+			if o.lastGoodValueTTL > 0 && age > o.lastGoodValueTTL {
+				slog.Warn("metric returned 0, last good value expired",
+					"metric", name,
+					"lastGood", entry.value,
+					"age", age.Round(time.Second),
+					"ttl", o.lastGoodValueTTL,
+				)
+				continue
+			}
+			slog.Warn("metric returned 0, using last known good value",
+				"metric", name,
+				"lastGood", entry.value,
+				"age", age.Round(time.Second),
+			)
+			snapshot.Values[name] = entry.value
 		} else {
-			o.lastGoodValues[name] = value
+			o.lastGoodValues[name] = lastGoodEntry{value: value, at: time.Now()}
 		}
 	}
 	o.mu.Unlock()

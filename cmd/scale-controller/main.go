@@ -29,7 +29,8 @@ func main() {
 	prometheusAddr := flag.String("prometheus-addr", "http://localhost:9090", "Prometheus server address")
 	namespace := flag.String("namespace", "default", "Kubernetes namespace of the CNPG cluster")
 	dbCluster := flag.String("db-cluster", "pg-cluster", "Name of the CNPG cluster to manage")
-	watchInterval := flag.Duration("watch-interval", 10*time.Second, "How often to check the config file for changes")
+	watchInterval        := flag.Duration("watch-interval", 10*time.Second, "How often to check the config file for changes")
+	lastGoodValueTTL     := flag.Duration("last-good-value-ttl", 2*time.Minute, "How long a cached last-good metric value is trusted when Prometheus returns 0 (0 = no expiry)")
 	metricsAddr := flag.String("metrics-addr", ":9091", "Address to expose controller Prometheus metrics on")
 	logFile := flag.String("log-file", "scale-controller.log", "Path to log file (written alongside stdout)")
 	flag.Parse()
@@ -57,7 +58,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to create Prometheus querier: %v", err)
 	}
-	observer := scale.NewPrometheusMetricsObserver(querier)
+	observer := scale.NewPrometheusMetricsObserver(querier, *lastGoodValueTTL)
 
 	// Kubernetes client with CNPG scheme registered, used for managing CNPG cluster and watching for changes
 	if err := cnpgv1.AddToScheme(scheme.Scheme); err != nil {
