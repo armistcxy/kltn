@@ -48,7 +48,6 @@ func (p *EWMAPredictor) Predict(_ context.Context, history []DataPoint, horizon 
 	slope := olsSlope(recent)
 	predicted := ewma + slope*horizon.Seconds()
 
-	// Step 4: floor at 0
 	return math.Max(predicted, 0), nil
 }
 
