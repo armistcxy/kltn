@@ -316,8 +316,8 @@ func (c *ScaleController) computeReactiveTarget(cfg Config, snapshot *MetricsSna
 
 		desired, reason := desiredReplicasForMetric(spec, value, current)
 
-		if spec.ScaleUpOnly && desired >= current {
-			slog.Info("scaleUpOnly metric skipped (no scale-up signal)", "metric", spec.Name, "value", value)
+		if spec.ScaleUpOnly && desired < current {
+			slog.Info("scaleUpOnly metric skipped (scale-down suppressed)", "metric", spec.Name, "value", value, "desired", desired)
 			continue
 		}
 
@@ -376,9 +376,6 @@ func desiredReplicasForMetric(spec MetricSpec, value float64, current int) (int,
 		reason = fmt.Sprintf("value %.4f within thresholds [%.4f, %.4f]", value, spec.ScaleDownThreshold, spec.ScaleUpThreshold)
 	}
 
-	if spec.ScaleUpOnly && desired < current {
-		return current, reason + " (scale-up only: floored at current)"
-	}
 	return desired, reason
 }
 
