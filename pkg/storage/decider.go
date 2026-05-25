@@ -42,7 +42,6 @@ func (d *Decider) DecidePGData(snap *StorageSnapshot, cfg PGDataConfig, guards S
 		}
 		critical = false
 		aboveThreshold = false
-		_ = propReason
 	}
 
 	if !aboveThreshold && !preemptive {
