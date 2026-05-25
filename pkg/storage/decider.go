@@ -35,7 +35,7 @@ func (d *Decider) DecidePGData(snap *StorageSnapshot, cfg PGDataConfig, guards S
 	aboveThreshold := usage >= cfg.ScaleUpThresholdPercent
 	preemptive := isPreemptiveNeeded(snap.PGDataTimeToFullSeconds, cfg.PreemptiveResizeIfFullInHours)
 
-	if propagating, propReason := isResizePropagating(snap); propagating && (critical || aboveThreshold) {
+	if propagating, propReason := isResizePropagating(snap.PGDataCapacityBytes, snap.CurrentPGDataSize, "pgdata"); propagating && (critical || aboveThreshold) {
 		if !preemptive {
 			decision.Reason = "propagating: " + propReason
 			return decision
@@ -124,6 +124,11 @@ func (d *Decider) DecideWAL(snap *StorageSnapshot, cfg WALConfig, guards SafetyG
 
 	critical := usagePct >= cfg.CriticalThresholdPercent
 	aboveThreshold := usagePct >= cfg.ScaleUpThresholdPercent
+
+	if propagating, propReason := isResizePropagating(snap.WALCapacityBytes, snap.CurrentWALSize, "wal"); propagating && aboveThreshold {
+		decision.Reason = "propagating: " + propReason
+		return decision
+	}
 
 	if !aboveThreshold {
 		decision.Reason = fmt.Sprintf("wal usage %.1f%% is below threshold %.1f%%", usagePct, cfg.ScaleUpThresholdPercent)
@@ -228,22 +233,22 @@ func computeNewSize(currentSizeStr string, stepPercent float64, maxSizeGi int) (
 	return fmt.Sprintf("%dGi", newGi), nil
 }
 
-func isResizePropagating(snap *StorageSnapshot) (bool, string) {
-	if math.IsNaN(snap.PGDataCapacityBytes) || snap.PGDataCapacityBytes <= 0 {
+func isResizePropagating(capacityBytes float64, currentSizeStr, label string) (bool, string) {
+	if math.IsNaN(capacityBytes) || capacityBytes <= 0 {
 		return false, ""
 	}
-	if snap.CurrentPGDataSize == "" {
+	if currentSizeStr == "" {
 		return false, ""
 	}
-	specQ, err := resource.ParseQuantity(snap.CurrentPGDataSize)
+	specQ, err := resource.ParseQuantity(currentSizeStr)
 	if err != nil {
 		return false, ""
 	}
 	specBytes := float64(specQ.Value())
-	if specBytes > snap.PGDataCapacityBytes*1.05 {
+	if specBytes > capacityBytes*1.05 {
 		return true, fmt.Sprintf(
-			"resize propagating: spec=%s (%.0f GiB) > kubelet capacity=%.1f GiB - metrics lagging, skipping decision",
-			snap.CurrentPGDataSize, specBytes/float64(1<<30), snap.PGDataCapacityBytes/float64(1<<30),
+			"%s resize propagating: spec=%s (%.0f GiB) > kubelet capacity=%.1f GiB - metrics lagging, skipping decision",
+			label, currentSizeStr, specBytes/float64(1<<30), capacityBytes/float64(1<<30),
 		)
 	}
 	return false, ""

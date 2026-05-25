@@ -64,6 +64,10 @@ func (o *Observer) Observe(ctx context.Context, cfg Config) (*StorageSnapshot, e
 			consumptionLong, promDuration(pc.LongTermQuantileWindow), promDuration(pc.LongTermSampleInterval),
 			consumptionShort, promDuration(pc.ShortTermQuantileWindow), promDuration(pc.ShortTermSampleInterval),
 		),
+		"wal_capacity_bytes": fmt.Sprintf(
+			`min(kubelet_volume_stats_capacity_bytes{namespace="%s",persistentvolumeclaim=~"%s-wal-[0-9]+"})`,
+			cfg.Namespace, cfg.Cluster,
+		),
 		"wal_usage_ratio": fmt.Sprintf(
 			`max(cnpg_collector_pg_wal{value="size",namespace="%s"}) / max(cnpg_collector_pg_wal{value="volume_size",namespace="%s"})`,
 			cfg.Namespace, cfg.Namespace,
@@ -150,6 +154,7 @@ func (o *Observer) Observe(ctx context.Context, cfg Config) (*StorageSnapshot, e
 		PGDataWorstCaseGrowthRateBytesPerSec: growthRate,
 		PGDataTimeToFullSeconds:              timeToFull,
 		WALUsageRatio:                        results["wal_usage_ratio"],
+		WALCapacityBytes:                     results["wal_capacity_bytes"],
 		WALArchivePending:                    results["wal_archive_pending"],
 		DBSizeGrowthRateBytesPerSec:          results["db_growth_rate"],
 		ReplicationLagSeconds:                results["replication_lag"],

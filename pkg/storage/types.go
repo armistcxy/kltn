@@ -34,6 +34,9 @@ type StorageSnapshot struct {
 	// PGDataCapacityBytes is the actual PVC capacity reported by kubelet (kubelet_volume_stats_capacity_bytes)
 	PGDataCapacityBytes float64
 
+	// WALCapacityBytes is the actual WAL PVC capacity reported by kubelet
+	WALCapacityBytes float64
+
 	// CurrentPGDataSize is the current spec.storage.size from the Cluster CR
 	CurrentPGDataSize string
 
