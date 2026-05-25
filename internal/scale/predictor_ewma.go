@@ -71,11 +71,3 @@ func olsSlope(pts []DataPoint) float64 {
 	}
 	return (n*sumTY - sumT*sumY) / denom
 }
-
-func avgPointInterval(pts []DataPoint) time.Duration {
-	if len(pts) < 2 {
-		return 0
-	}
-	total := pts[len(pts)-1].Timestamp.Sub(pts[0].Timestamp)
-	return total / time.Duration(len(pts)-1)
-}

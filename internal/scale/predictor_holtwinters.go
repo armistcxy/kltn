@@ -107,3 +107,11 @@ func (p *HoltWintersPredictor) holtLinear(history []DataPoint, steps int) float6
 	predicted := level + float64(steps)*trend
 	return math.Max(predicted, 0)
 }
+
+func avgPointInterval(pts []DataPoint) time.Duration {
+	if len(pts) < 2 {
+		return 0
+	}
+	total := pts[len(pts)-1].Timestamp.Sub(pts[0].Timestamp)
+	return total / time.Duration(len(pts)-1)
+}
